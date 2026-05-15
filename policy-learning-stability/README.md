@@ -1,4 +1,4 @@
-# Robust Policy Learning under Continuous Reward-Scale Variation
+# Policy Learning Stability Under Reward Scaling
 
 This repository contains the official implementation for systematically investigating and mitigating policy learning instabilities in reinforcement learning under non-stationary reward scaling regimes.
 
