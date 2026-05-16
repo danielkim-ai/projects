@@ -1,0 +1,11 @@
+# Runtime logs and tabular experiment artefacts can become large.
+results/*
+
+# Keep publication-ready visualisations tracked.
+!results/
+!results/.gitkeep
+!results/*.png
+
+# Python runtime artefacts.
+__pycache__/
+*.py[cod]

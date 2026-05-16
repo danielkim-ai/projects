@@ -49,7 +49,16 @@ For platform-specific guidance, including Apple Silicon, Windows, Linux, `grpcio
 
 - For sinusoidal drift: `python train.py --perturbation sinusoidal`
 - For abrupt collapse: `python train.py --perturbation collapse`
-- For automated visualisation: `python -m src.visualise --input results/experiment_log.csv`
+- Use `--episodes` to control the experimental horizon. The default is `500`, while longer runs provide more stable return-variance estimates.
+- For automated visualisation: `python -m src.visualise --input results/experiment_log.csv --output-dir results`
+
+```bash
+# Run full experimental suite
+python train.py --episodes 1000 --perturbation sinusoidal
+
+# Generate publication-quality plots
+python -m src.visualise --input results/experiment_log.csv
+```
 
 ## Execution
 
