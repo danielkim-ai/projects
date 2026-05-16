@@ -1,6 +1,9 @@
 gymnasium[mujoco]>=0.28.1
-torch>=2.0.0
-ray[rllib]>=2.5.0
-gpytorch>=1.10
+torch>=2.1.0
+ray[rllib]>=2.9.0
+gpytorch>=1.11
+linear_operator==0.6.1
 numpy>=1.24.0
 matplotlib>=3.7.0
+pandas
+seaborn

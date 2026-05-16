@@ -43,10 +43,13 @@ cd projects/policy-learning-stability
 pip install -r requirements.txt
 ```
 
+For platform-specific guidance, including Apple Silicon, Windows, Linux, `grpcio` build issues and the `linear_operator` pin, see `INSTALL.md`.
+
 ### Usage
 
 - For sinusoidal drift: `python train.py --perturbation sinusoidal`
 - For abrupt collapse: `python train.py --perturbation collapse`
+- For automated visualisation: `python -m src.visualise --input results/experiment_log.csv`
 
 ## Execution
 

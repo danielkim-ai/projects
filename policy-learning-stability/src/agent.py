@@ -11,6 +11,16 @@ from torch import Tensor, nn
 from torch.distributions import Normal
 
 
+def select_torch_device() -> torch.device:
+    """Select CUDA, Apple Metal or CPU without requiring platform-specific flags."""
+
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
+
 @dataclass(frozen=True)
 class BayesianSACConfig:
     """Architectural and Bayesian optimisation controls."""
@@ -117,12 +127,14 @@ class Critic(nn.Module):
 class ContextualBayesianSAC(nn.Module):
     """SAC scaffold whose entropy temperature is inferred by Bayesian search."""
 
-    def __init__(self, state_dim: int, action_dim: int, lr: float = 3e-4) -> None:
+    def __init__(self, state_dim: int, action_dim: int, lr: float = 3e-4, device: torch.device | None = None) -> None:
         super().__init__()
         self.config = BayesianSACConfig(state_dim=state_dim, action_dim=action_dim)
+        self.device = device or select_torch_device()
         self.actor = Actor(self.config)
         self.critic_1 = Critic(self.config)
         self.critic_2 = Critic(self.config)
+        self.to(self.device)
         self.gp = GaussianProcessSurrogate(
             noise=self.config.gp_noise,
             length_scale=self.config.kernel_length_scale,
@@ -153,6 +165,7 @@ class ContextualBayesianSAC(nn.Module):
     def entropy_regularised_actor_loss(self, states: Tensor, context_alpha_t: float) -> Tensor:
         """Compute the SAC actor loss using the Bayesian temperature posterior."""
 
+        states = states.to(self.device)
         actions, log_probabilities = self.actor.sample(states)
         q_value = torch.minimum(self.critic_1(states, actions), self.critic_2(states, actions))
         temperature = torch.tensor(
