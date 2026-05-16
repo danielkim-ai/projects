@@ -56,7 +56,7 @@ def plot_return_variance(frame: pd.DataFrame, output_dir: Path) -> Path:
         comparison = frame.melt(
             value_vars=["standard_return", "bayesian_return"],
             var_name="agent",
-            value_name="return",
+            value_name="episode_return",
         )
         comparison["agent"] = comparison["agent"].map(
             {"standard_return": "Standard SAC", "bayesian_return": "Bayesian SAC"}
@@ -65,13 +65,13 @@ def plot_return_variance(frame: pd.DataFrame, output_dir: Path) -> Path:
         missing = REQUIRED_RETURN_COLUMNS.difference(frame.columns)
         if missing:
             raise ValueError(f"Missing return-comparison columns: {', '.join(sorted(missing))}")
-        comparison = frame.copy()
+        comparison = frame.rename(columns={"return": "episode_return"}).copy()
 
     output_path = output_dir / "return_variance_comparison.png"
     sns.set_theme(style="whitegrid", context="talk")
     figure, axis = plt.subplots(figsize=(10, 6))
-    sns.boxplot(data=comparison, x="agent", y="return", ax=axis, palette="Set2")
-    sns.stripplot(data=comparison, x="agent", y="return", ax=axis, color="black", alpha=0.45)
+    sns.boxplot(data=comparison, x="agent", y="episode_return", ax=axis, palette="Set2")
+    sns.stripplot(data=comparison, x="agent", y="episode_return", ax=axis, color="black", alpha=0.45)
     axis.set_xlabel("")
     axis.set_ylabel("Episode Return")
     axis.set_title("Return Variance: Standard SAC vs Bayesian SAC")
