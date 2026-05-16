@@ -1,0 +1,6 @@
+gymnasium[mujoco]>=0.28.1
+torch>=2.0.0
+ray[rllib]>=2.5.0
+gpytorch>=1.10
+numpy>=1.24.0
+matplotlib>=3.7.0

@@ -27,3 +27,52 @@ The dynamic Bayesian-prior approach treats \(\alpha_t\) as contextual evidence. 
 ## Research Aim
 
 The repository provides a compact experimental basis for analysing policy collapse variance under changing reward magnitudes, with emphasis on principled uncertainty handling rather than ad hoc temperature schedules.
+
+## Getting Started
+
+### Prerequisites
+
+- MuJoCo installation.
+- Python 3.9+ environment.
+
+### Installation
+
+```bash
+git clone https://github.com/danielkim-ai/projects.git
+cd projects/policy-learning-stability
+pip install -r requirements.txt
+```
+
+### Usage
+
+- For sinusoidal drift: `python train.py --perturbation sinusoidal`
+- For abrupt collapse: `python train.py --perturbation collapse`
+
+## Execution
+
+Scenario A (Sinusoidal Drift):
+
+```bash
+python train.py --perturbation sinusoidal
+```
+
+Scenario B (Abrupt Collapse):
+
+```bash
+python train.py --perturbation collapse
+```
+
+## Monitoring
+
+Use the Ray dashboard and process logs to monitor Bayesian Temperature Adaptation in real time, including posterior temperature samples, reward-scale traces and episode-level return summaries.
+
+## Citation
+
+```bibtex
+@misc{kim2026rewardscale,
+  author = {Daniel Kim},
+  title = {Robust Policy Learning under Reward-Scale Variation},
+  year = {2026},
+  note = {Policy Learning Stability Under Reward Scaling}
+}
+```
