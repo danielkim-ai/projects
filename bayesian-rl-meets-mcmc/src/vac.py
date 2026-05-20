@@ -16,6 +16,7 @@ class VACConfig:
     obs_dim: int
     action_dim: int
     hidden_dim: int = 64
+    hidden_layers: int = 2
     beta_kl: float = 1.0e-3
     target_kl: float = 0.03
     beta_lr: float = 0.05
@@ -63,21 +64,22 @@ class VariationalActorCritic(nn.Module):
     def __init__(self, config: VACConfig):
         super().__init__()
         self.config = config
-        self.actor_body = nn.Sequential(
-            VariationalLinear(config.obs_dim, config.hidden_dim),
-            nn.Tanh(),
-            VariationalLinear(config.hidden_dim, config.hidden_dim),
-            nn.Tanh(),
-        )
+        self.actor_body = self._make_body(config.obs_dim, config.hidden_dim, config.hidden_layers)
         self.beta_kl = float(config.beta_kl)
         self.actor_mean = VariationalLinear(config.hidden_dim, config.action_dim)
         self.actor_log_std = nn.Parameter(torch.full((config.action_dim,), -0.5))
 
-        self.critic = nn.Sequential(
-            VariationalLinear(config.obs_dim, config.hidden_dim),
-            nn.Tanh(),
-            VariationalLinear(config.hidden_dim, 1),
-        )
+        self.critic_body = self._make_body(config.obs_dim, config.hidden_dim, config.hidden_layers)
+        self.critic_value = VariationalLinear(config.hidden_dim, 1)
+
+    @staticmethod
+    def _make_body(obs_dim: int, hidden_dim: int, hidden_layers: int) -> nn.Sequential:
+        layers: list[nn.Module] = []
+        in_dim = obs_dim
+        for _ in range(max(1, hidden_layers)):
+            layers.extend([VariationalLinear(in_dim, hidden_dim), nn.Tanh()])
+            in_dim = hidden_dim
+        return nn.Sequential(*layers)
 
     def policy_distribution(self, observations: torch.Tensor) -> Normal:
         features = self.actor_body(observations)
@@ -86,7 +88,7 @@ class VariationalActorCritic(nn.Module):
         return Normal(mean, log_std.exp())
 
     def value(self, observations: torch.Tensor) -> torch.Tensor:
-        return self.critic(observations).squeeze(-1)
+        return self.critic_value(self.critic_body(observations)).squeeze(-1)
 
     def kl_to_prior(self) -> torch.Tensor:
         kl = torch.zeros((), device=self.actor_log_std.device)

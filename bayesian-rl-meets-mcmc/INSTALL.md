@@ -180,6 +180,7 @@ drive.mount("/content/drive")
 !pip install -r requirements.txt
 !pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 !pip install mujoco gymnasium[mujoco]
+!python scripts/run_low_data_mujoco.py --save-tag colab_phase1
 
 import torch
 device = "cuda" if torch.cuda.is_available() else "cpu"

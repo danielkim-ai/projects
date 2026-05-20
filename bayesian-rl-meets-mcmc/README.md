@@ -71,16 +71,16 @@ From the repository root, run the Phase 1 low-data MuJoCo diagnostic artefact ge
 
 ```bash
 cd bayesian-rl-meets-mcmc
-python scripts/run_low_data_mujoco.py --episodes 12 --seed 7
+python scripts/run_low_data_mujoco.py --episodes 12 --seed 7 --save-tag phase1_seed7
 ```
 
-The command writes `results/stats.json` and `results/mcmc_vs_vi_tradeoff.png`, allowing the report pipeline to verify PAC-Bayes, regret, calibration, and MCMC-VI trade-off fields before full MuJoCo rollout integration.
+The command writes timestamped result files and refreshes `results/latest_stats.json`, allowing the report pipeline to verify PAC-Bayes, regret, calibration, and MCMC-VI trade-off fields before full MuJoCo rollout integration.
 
 To launch the MuJoCo training path with TensorBoard logging:
 
 ```bash
 cd bayesian-rl-meets-mcmc
-python scripts/train_bayesian_rl.py --env-id HalfCheetah-v4 --episodes 50
+python scripts/train_bayesian_rl.py --env-id HalfCheetah-v4 --episodes 50 --save-tag halfcheetah_phase2
 tensorboard --logdir results/tensorboard
 ```
 
@@ -98,4 +98,5 @@ drive.mount("/content/drive")
 !git clone https://github.com/danielkim-ai/projects.git
 %cd projects/bayesian-rl-meets-mcmc
 !pip install -r requirements.txt
+!python scripts/run_low_data_mujoco.py --save-tag colab_phase1
 ```

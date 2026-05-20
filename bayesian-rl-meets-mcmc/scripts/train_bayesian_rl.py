@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.hybrid_recalibration import HybridRecalibrationConfig, HybridRecalibrator  # noqa: E402
+from src.result_io import run_id, update_latest_copy  # noqa: E402
 from src.sgld import SGLDConfig  # noqa: E402
 from src.vac import VACConfig, VariationalActorCritic  # noqa: E402
 
@@ -40,10 +42,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gae-lambda", type=float, default=0.95)
     parser.add_argument("--lr", type=float, default=3.0e-4)
     parser.add_argument("--hidden-dim", type=int, default=128)
+    parser.add_argument("--layers", type=int, default=2)
     parser.add_argument("--vi-epochs", type=int, default=4)
     parser.add_argument("--recalibrate-every", type=int, default=5)
     parser.add_argument("--ess-floor", type=float, default=8.0)
     parser.add_argument("--log-dir", type=Path, default=PROJECT_ROOT / "results" / "tensorboard")
+    parser.add_argument("--results-dir", type=Path, default=PROJECT_ROOT / "results")
+    parser.add_argument("--save-tag", default="phase2_mujoco")
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     return parser.parse_args()
@@ -129,6 +134,8 @@ def main() -> None:
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     device = torch.device(args.device)
+    experiment_id = run_id(args.save_tag, phase="phase2", seed=args.seed)
+    args.results_dir.mkdir(parents=True, exist_ok=True)
 
     env = gym.make(args.env_id)
     env.action_space.seed(args.seed)
@@ -136,7 +143,12 @@ def main() -> None:
     action_dim = int(np.prod(env.action_space.shape))
 
     model = VariationalActorCritic(
-        VACConfig(obs_dim=obs_dim, action_dim=action_dim, hidden_dim=args.hidden_dim)
+        VACConfig(
+            obs_dim=obs_dim,
+            action_dim=action_dim,
+            hidden_dim=args.hidden_dim,
+            hidden_layers=args.layers,
+        )
     ).to(device)
     optimiser = optim.Adam(model.parameters(), lr=args.lr)
     recalibrator = HybridRecalibrator(
@@ -148,8 +160,9 @@ def main() -> None:
         ),
     )
 
-    writer = SummaryWriter(args.log_dir / args.env_id)
+    writer = SummaryWriter(args.log_dir / args.env_id / experiment_id)
     latest_metrics: dict[str, torch.Tensor] | None = None
+    episode_summaries: list[dict[str, float]] = []
 
     for episode in range(1, args.episodes + 1):
         if episode > 1:
@@ -192,6 +205,16 @@ def main() -> None:
         writer.add_scalar("vac/kl", kl_value, episode)
         writer.add_scalar("vac/beta_kl", beta_value, episode)
         writer.add_scalar("mcmc/ess", ess_value, episode)
+        episode_summaries.append(
+            {
+                "episode": float(episode),
+                "return": float(batch.episode_return),
+                "length": float(batch.episode_length),
+                "kl": kl_value,
+                "beta_kl": beta_value,
+                "ess": float(ess_value),
+            }
+        )
 
         print(
             f"episode={episode} return={batch.episode_return:.2f} "
@@ -200,6 +223,20 @@ def main() -> None:
 
     writer.close()
     env.close()
+
+    stats_path = args.results_dir / f"stats_{experiment_id}.json"
+    stats = {
+        "experiment": "bayesian-vac-sgld-mujoco-phase2",
+        "experiment_id": experiment_id,
+        "env_id": args.env_id,
+        "seed": args.seed,
+        "episodes": args.episodes,
+        "rollout_steps": args.rollout_steps,
+        "tensorboard_logdir": str(args.log_dir / args.env_id / experiment_id),
+        "episodes_summary": episode_summaries,
+    }
+    stats_path.write_text(json.dumps(stats, indent=2), encoding="utf-8")
+    update_latest_copy(stats_path, "latest_stats.json")
 
 
 if __name__ == "__main__":
