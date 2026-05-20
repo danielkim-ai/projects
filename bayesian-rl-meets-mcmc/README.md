@@ -1,0 +1,100 @@
+# Bayesian RL Meets MCMC
+
+## Research Focus
+
+This project investigates **Bayesian RL Meets MCMC -- Sample Efficiency via Posterior Estimation**, with particular emphasis on the epistemic fragility of point estimates in reinforcement learning under severe data scarcity.
+
+### Problem
+
+Standard policy optimisation methods such as PPO and SAC commonly rely on point-estimated policy and value parameters. In low-data regimes, this practice can induce brittle exploration, poorly calibrated value estimates, and overconfident policy updates. The central concern is not merely variance in returns, but the misrepresentation of epistemic uncertainty as though it were aleatoric noise or optimisation error.
+
+### Solution
+
+We study a hybrid **MCMC-Variational Inference (VI)** framework for calibrated uncertainty quantification in actor-critic reinforcement learning. The intended programme is to combine tractable variational objectives with posterior sampling methods that better preserve uncertainty over policies, critics, and selected hyperparameters.
+
+### Core Methods
+
+- **MCMC-Augmented Policy Optimization:** Using SGLD/SGHMC for approximate posterior sampling over policy and critic parameters, thereby replacing single-point updates with posterior-aware optimisation dynamics.
+- **Variational Actor-Critic (VAC):** Marginalising over parameter uncertainty through an evidence lower bound (ELBO), using objectives of the form
+
+  $$
+  \mathcal{L}_{\mathrm{ELBO}}(\phi)
+  =
+  \mathbb{E}_{q_{\phi}(\theta)}
+  \left[
+  \log p(\mathcal{D} \mid \theta)
+  \right]
+  -
+  \mathrm{KL}
+  \left(
+  q_{\phi}(\theta)
+  \,\|\, p(\theta)
+  \right).
+  $$
+
+- **Bayesian Hyperparameter Inference:** Treating discount, entropy, and learning-rate parameters such as $\gamma$, $\alpha$, and $\eta$ as random variables rather than fixed constants:
+
+  $$
+  p(\theta, \gamma, \alpha, \eta \mid \mathcal{D})
+  \propto
+  p(\mathcal{D} \mid \theta, \gamma, \alpha, \eta)
+  p(\theta)
+  p(\gamma)
+  p(\alpha)
+  p(\eta).
+  $$
+
+## Phase 1 Implementation
+
+```text
+bayesian-rl-meets-mcmc/
+  configs/   Hyperparameter prior specifications and experiment templates.
+  docs/      Technical notes, theoretical derivations, and internal references.
+  results/   Logs, posterior diagnostics, plots, and evaluation artefacts.
+  scripts/   Execution entry points for future training and evaluation workflows.
+  setup/     Cross-platform dependency specifications.
+  src/       Phase 1 SGLD, VAC, hybrid recalibration, and metric utilities.
+```
+
+## Current Status
+
+This repository currently contains the project scaffold, Phase 1 algorithmic skeletons, documentation, and environment setup material. Full MuJoCo rollout collection, production training loops, posterior diagnostics, and empirical benchmark claims are intentionally deferred.
+
+The first experiment target is **Low-data MuJoCo**. The current report contract is implemented through `scripts/run_low_data_mujoco.py`, which writes:
+
+- `results/stats.json`, including PAC-Bayes bound, regret, calibration error, and effective sample size fields.
+- `results/mcmc_vs_vi_tradeoff.png`, a visual comparison surface for VAC/VI and SGLD-recalibrated traces.
+
+The script presently uses deterministic diagnostic traces so that the report pipeline can be validated before the real MuJoCo training loop is introduced.
+
+## Algorithmic Skeleton
+
+- `src/sgld.py`: Stochastic Gradient Langevin Dynamics updates for approximate posterior sampling at SGD-like cost.
+- `src/vac.py`: Mean-field variational actor-critic modules and an ELBO-style objective,
+
+  $$
+  \mathcal{L}(\phi)
+  =
+  \mathbb{E}_{q_\phi(\theta)}
+  \left[
+  \sum_t r_t
+  \right]
+  -
+  \beta \cdot D_{\mathrm{KL}}
+  \left(
+  q_\phi(\theta)
+  \,\|\, p(\theta)
+  \right).
+  $$
+
+- `src/hybrid_recalibration.py`: A hybrid schedule in which VAC supplies online variational updates and SGLD periodically recalibrates the posterior approximation, especially when KL or effective sample size diagnostics suggest mode collapse.
+- `src/metrics.py`: Report-facing PAC-Bayes, regret, calibration, and effective sample size utilities.
+
+## Initial Research Questions
+
+- Can posterior sampling over policy and critic parameters reduce sample complexity relative to point-estimated PPO or SAC under restricted data budgets?
+- How should SGLD or SGHMC noise be calibrated when the likelihood term is induced by bootstrapped temporal-difference targets?
+- When does the variational approximation understate posterior uncertainty, and can intermittent MCMC correction mitigate that failure mode?
+- Which hyperparameters, among $\gamma$, $\alpha$, and $\eta$, most materially affect Bayesian regret and posterior calibration?
+- How does the posterior over policy parameters evolve as rollout data arrive online, and what concept drift signals should trigger posterior discounting?
+- Can PAC-Bayes bounds be made tight enough to guide continuous-control policy selection, rather than merely supplying a retrospective certificate?

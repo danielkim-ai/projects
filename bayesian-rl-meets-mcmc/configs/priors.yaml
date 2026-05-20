@@ -1,0 +1,35 @@
+# Prior specification template for future Bayesian RL experiments.
+policy:
+  parameter_prior:
+    distribution: normal
+    mean: 0.0
+    std: 1.0
+
+critic:
+  parameter_prior:
+    distribution: normal
+    mean: 0.0
+    std: 1.0
+
+hyperparameters:
+  gamma:
+    distribution: beta
+    alpha: 20.0
+    beta: 1.5
+    support: [0.0, 1.0]
+  alpha:
+    distribution: log_normal
+    mean: -2.3
+    std: 0.5
+  eta:
+    distribution: log_normal
+    mean: -7.0
+    std: 0.75
+
+mcmc:
+  sampler: sgld
+  step_size: 1.0e-5
+  temperature: 1.0
+  burn_in_steps: 1000
+  posterior_samples: 100
+
