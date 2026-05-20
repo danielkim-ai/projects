@@ -1,6 +1,6 @@
 # Installation Guide
 
-This guide records the intended cross-platform environment setup for **Bayesian RL Meets MCMC**. Phase 1 includes SGLD, VAC, hybrid recalibration, and report extraction skeletons; full MuJoCo training will be added in a later implementation phase.
+This guide records the intended cross-platform environment setup for **Bayesian RL Meets MCMC**. Phase 1 includes SGLD, VAC, hybrid recalibration, and report extraction skeletons; full MuJoCo training will be added in a later implementation phase. Dependency manifests now live in the project root.
 
 ## A. Windows
 
@@ -41,7 +41,7 @@ source ~/.bashrc
 Create the environment:
 
 ```bash
-conda env create -f setup/environment.yaml
+conda env create -f environment.yaml
 conda activate bayes-rl-mcmc
 ```
 
@@ -110,14 +110,14 @@ The result should include `osx-arm64`.
 ### 2. Create the project environment
 
 ```bash
-conda env create -f setup/environment.yaml
+conda env create -f environment.yaml
 conda activate bayes-rl-mcmc
 ```
 
 If dependency solving selects incompatible builds, force the native subdirectory:
 
 ```bash
-CONDA_SUBDIR=osx-arm64 conda env create -f setup/environment.yaml
+CONDA_SUBDIR=osx-arm64 conda env create -f environment.yaml
 ```
 
 ### 3. Install PyTorch with MPS support
@@ -168,13 +168,16 @@ Enable a GPU runtime through **Runtime -> Change runtime type -> GPU** before ex
 from google.colab import drive
 drive.mount("/content/drive")
 
+# Create and enter the working directory.
 !mkdir -p "/content/drive/MyDrive/Colab Notebooks"
 %cd /content/drive/MyDrive/Colab\ Notebooks/
+
+# Clone the repository and enter the Bayesian RL project.
 !git clone https://github.com/danielkim-ai/projects.git
-%cd projects/projects/bayesian-rl-meets-mcmc
+%cd projects/bayesian-rl-meets-mcmc
 
 !python -m pip install --upgrade pip setuptools wheel
-!pip install -r setup/requirements.txt
+!pip install -r requirements.txt
 !pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 !pip install mujoco gymnasium[mujoco]
 

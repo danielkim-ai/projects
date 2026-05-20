@@ -31,7 +31,7 @@ bayesian-rl-meets-mcmc/
   docs/      Technical notes, theoretical derivations, and internal references.
   results/   Logs, posterior diagnostics, plots, and evaluation artefacts.
   scripts/   Execution entry points for future training and evaluation workflows.
-  setup/     Cross-platform dependency specifications.
+  requirements.txt and environment.yaml live at the project root.
   src/       Phase 1 SGLD, VAC, hybrid recalibration, and metric utilities.
 ```
 
@@ -82,9 +82,12 @@ For Google Colab, mount Google Drive, create the working notebook directory if n
 from google.colab import drive
 drive.mount("/content/drive")
 
+# Create and enter the working directory.
 !mkdir -p "/content/drive/MyDrive/Colab Notebooks"
 %cd /content/drive/MyDrive/Colab\ Notebooks/
+
+# Clone the repository and enter the Bayesian RL project.
 !git clone https://github.com/danielkim-ai/projects.git
-%cd projects/projects/bayesian-rl-meets-mcmc
-!pip install -r setup/requirements.txt
+%cd projects/bayesian-rl-meets-mcmc
+!pip install -r requirements.txt
 ```

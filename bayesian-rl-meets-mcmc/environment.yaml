@@ -14,4 +14,4 @@ dependencies:
   - tqdm
   - cmake
   - pip:
-      - -r setup/requirements.txt
+      - -r requirements.txt
