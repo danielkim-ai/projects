@@ -27,6 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--scalar", default="rollout/return", help="TensorBoard scalar to visualise.")
     parser.add_argument("--log-dir", type=Path, default=PROJECT_ROOT / "results" / "archive" / "tensorboard")
     parser.add_argument("--results-dir", type=Path, default=PROJECT_ROOT / "results")
+    parser.add_argument("--env-id", default=None, help="Optional environment identifier for environment-specific logs.")
     return parser.parse_args()
 
 
@@ -34,19 +35,24 @@ def timestamp() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
-def output_paths(results_dir: Path, phase: str, tag: str) -> tuple[Path, Path, str]:
+def output_paths(results_dir: Path, phase: str, tag: str, env_id: str | None = None) -> tuple[Path, Path, str]:
     stamp = timestamp()
     phase_name = safe_tag(phase, "phase")
     run_tag = f"{safe_tag(tag, 'run')}_{stamp}"
-    output_dir = results_dir / "plots" / phase_name / run_tag
+    phase_dir = results_dir / "plots" / phase_name
+    if env_id:
+        phase_dir = phase_dir / safe_tag(env_id, "environment")
+    output_dir = phase_dir / run_tag
     output_dir.mkdir(parents=True, exist_ok=True)
-    latest_path = results_dir / "plots" / phase_name / "latest_comparison.png"
+    latest_path = phase_dir / "latest_comparison.png"
     latest_path.parent.mkdir(parents=True, exist_ok=True)
     return output_dir, latest_path, stamp
 
 
-def read_tensorboard_runs(log_dir: Path, scalar: str, tag: str) -> list[tuple[np.ndarray, np.ndarray]]:
+def read_tensorboard_runs(log_dir: Path, scalar: str, tag: str, env_id: str | None = None) -> list[tuple[np.ndarray, np.ndarray]]:
     event_files = list(log_dir.rglob("events.out.tfevents.*"))
+    if env_id:
+        event_files = [path for path in event_files if safe_tag(env_id, "environment").lower() in str(path).lower()]
     if tag:
         event_files = [path for path in event_files if tag.lower() in str(path).lower()]
     if not event_files:
@@ -104,10 +110,10 @@ def read_latest_stats(results_dir: Path) -> list[tuple[np.ndarray, np.ndarray]]:
     return []
 
 
-def read_tensorboard_hypers(log_dir: Path, tag: str) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+def read_tensorboard_hypers(log_dir: Path, tag: str, env_id: str | None = None) -> dict[str, tuple[np.ndarray, np.ndarray]]:
     hypers: dict[str, tuple[np.ndarray, np.ndarray]] = {}
     for name in ("gamma", "alpha"):
-        runs = read_tensorboard_runs(log_dir, f"hyperparameter/{name}", tag)
+        runs = read_tensorboard_runs(log_dir, f"hyperparameter/{name}", tag, env_id)
         if runs:
             steps, mean, _ = aggregate_runs(runs)
             hypers[name] = (steps, mean)
@@ -163,7 +169,8 @@ def plot_comparison(steps: np.ndarray, mean: np.ndarray, std: np.ndarray, output
         plt.fill_between(steps, mean - std, mean + std, color="#1f4e79", alpha=0.18, label="Standard deviation")
     plt.xlabel("Optimisation Steps")
     plt.ylabel("Expected Return")
-    plt.title(f"Bayesian RL Comparison - {phase}")
+    subtitle = "\nPhase 2: Diagnostic Run" if phase.lower() == "phase2" else ""
+    plt.title(f"Bayesian RL Comparison - {phase}{subtitle}")
     plt.grid(alpha=0.25)
     plt.legend(frameon=False)
     plt.tight_layout()
@@ -191,7 +198,8 @@ def plot_hyperparameters(hypers: dict[str, tuple[np.ndarray, np.ndarray]], outpu
         axes[row, 1].set_ylabel("Posterior Frequency")
         axes[row, 1].grid(alpha=0.2)
 
-    fig.suptitle(f"Hyperparameter Posterior Estimation - {phase}")
+    subtitle = "\nPhase 2: Diagnostic Run" if phase.lower() == "phase2" else ""
+    fig.suptitle(f"Hyperparameter Posterior Estimation - {phase}{subtitle}")
     fig.tight_layout()
     fig.savefig(output_path, dpi=180)
     plt.close(fig)
@@ -199,10 +207,10 @@ def plot_hyperparameters(hypers: dict[str, tuple[np.ndarray, np.ndarray]], outpu
 
 def main() -> None:
     args = parse_args()
-    output_dir, latest_path, stamp = output_paths(args.results_dir, args.phase, args.tag)
+    output_dir, latest_path, stamp = output_paths(args.results_dir, args.phase, args.tag, args.env_id)
     output_path = output_dir / f"comparison_return_{stamp}.png"
 
-    runs = read_tensorboard_runs(args.log_dir, args.scalar, args.tag)
+    runs = read_tensorboard_runs(args.log_dir, args.scalar, args.tag, args.env_id)
     source = "tensorboard"
     if not runs:
         runs = read_latest_stats(args.results_dir)
@@ -214,7 +222,7 @@ def main() -> None:
     plot_comparison(steps, mean, std, output_path, args.phase)
     shutil.copy2(output_path, latest_path)
 
-    hypers = read_tensorboard_hypers(args.log_dir, args.tag)
+    hypers = read_tensorboard_hypers(args.log_dir, args.tag, args.env_id)
     if not hypers:
         hypers = read_latest_hypers(args.results_dir)
     if hypers:

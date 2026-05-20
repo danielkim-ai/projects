@@ -18,7 +18,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.hybrid_recalibration import HybridRecalibrationConfig, HybridRecalibrator  # noqa: E402
-from src.result_io import archive_dir, run_id, update_latest_copy  # noqa: E402
+from src.result_io import environment_archive_dir, run_id, safe_tag, update_latest_copy  # noqa: E402
 from src.sgld import HyperparameterPosteriorSampler, SGLDConfig  # noqa: E402
 from src.vac import VACConfig, VariationalActorCritic  # noqa: E402
 
@@ -37,7 +37,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Bayesian VAC + Preconditioned SGLD trainer.")
     parser.add_argument("--phase", default="phase2")
     parser.add_argument("--env-id", default="HalfCheetah-v4")
-    parser.add_argument("--episodes", type=int, default=50)
+    parser.add_argument("--episodes", type=int, default=None)
     parser.add_argument("--rollout-steps", type=int, default=512)
     parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument("--gae-lambda", type=float, default=0.95)
@@ -60,6 +60,19 @@ def parse_bool(value: str | bool) -> bool:
     if isinstance(value, bool):
         return value
     return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def default_episodes_for_env(env_id: str) -> int:
+    env_key = env_id.lower()
+    if "humanoid" in env_key:
+        return 200
+    if "ant" in env_key:
+        return 150
+    if "hopper" in env_key:
+        return 80
+    if "halfcheetah" in env_key:
+        return 50
+    return 50
 
 
 def scale_action(action: np.ndarray, env: Any) -> np.ndarray:
@@ -143,9 +156,12 @@ def main() -> None:
     np.random.seed(args.seed)
     device = torch.device(args.device)
     sample_hypers = parse_bool(args.sample_hypers)
+    if args.episodes is None:
+        args.episodes = default_episodes_for_env(args.env_id)
     experiment_id = run_id(args.save_tag, phase=args.phase, seed=args.seed)
     args.results_dir.mkdir(parents=True, exist_ok=True)
-    archive_path = archive_dir(args.results_dir)
+    env_folder = safe_tag(args.env_id, "environment")
+    archive_path = environment_archive_dir(args.results_dir, args.env_id)
 
     env = gym.make(args.env_id)
     env.action_space.seed(args.seed)
@@ -175,7 +191,7 @@ def main() -> None:
     )
     hyper_sample = hyper_sampler.sample()
 
-    writer = SummaryWriter(args.log_dir / args.env_id / experiment_id)
+    writer = SummaryWriter(args.log_dir / env_folder / experiment_id)
     latest_metrics: dict[str, torch.Tensor] | None = None
     episode_summaries: list[dict[str, float]] = []
 
@@ -266,7 +282,8 @@ def main() -> None:
         "rollout_steps": args.rollout_steps,
         "sample_hypers": sample_hypers,
         "hyperparameter_samples": hyper_sampler.samples,
-        "tensorboard_logdir": str(args.log_dir / args.env_id / experiment_id),
+        "environment_archive": str(archive_path),
+        "tensorboard_logdir": str(args.log_dir / env_folder / experiment_id),
         "episodes_summary": episode_summaries,
     }
     stats_path.write_text(json.dumps(stats, indent=2), encoding="utf-8")

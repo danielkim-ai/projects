@@ -31,9 +31,20 @@ def archive_dir(results_dir: Path) -> Path:
     return archive_path
 
 
+def environment_archive_dir(results_dir: Path, env_id: str) -> Path:
+    """Return the archive directory for a specific MuJoCo environment."""
+
+    env_path = archive_dir(results_dir) / safe_tag(env_id, "environment")
+    env_path.mkdir(parents=True, exist_ok=True)
+    return env_path
+
+
 def update_latest_copy(source: Path, latest_name: str) -> Path:
     """Copy the newest result to a latest_* file for downstream consumers."""
 
-    latest_path = source.parent.parent / latest_name if source.parent.name == "archive" else source.with_name(latest_name)
+    parents = list(source.parents)
+    archive_parent = next((parent for parent in parents if parent.name == "archive"), None)
+    latest_root = archive_parent.parent if archive_parent is not None else source.parent
+    latest_path = latest_root / latest_name
     shutil.copy2(source, latest_path)
     return latest_path

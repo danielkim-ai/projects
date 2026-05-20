@@ -45,7 +45,7 @@ The first experiment target is **Low-data MuJoCo**. The current report contract 
 - `results/latest_mcmc_vs_vi_tradeoff.png`, a visual comparison surface for VAC/VI and SGLD-recalibrated traces.
 
 Timestamped experiment artefacts are retained under `results/archive/`.
-Matplotlib visualisations are archived under `results/plots/{phase}/{tag_timestamp}/`, while Antigravity should read the phase-level latest plot, for example `results/plots/phase1/latest_comparison.png`.
+Matplotlib visualisations are archived under `results/plots/{phase}/{tag_timestamp}/`, or `results/plots/{phase}/{env_id}/{tag_timestamp}/` when an environment is specified. Antigravity should read the latest plot at the corresponding phase or environment level, for example `results/plots/phase1/latest_comparison.png` or `results/plots/phase2/HalfCheetah-v4/latest_comparison.png`.
 
 The script presently uses deterministic diagnostic traces so that the report pipeline can be validated before the real MuJoCo training loop is introduced.
 
@@ -83,14 +83,17 @@ To launch the MuJoCo training path with TensorBoard logging:
 
 ```bash
 cd bayesian-rl-meets-mcmc
-python scripts/train_bayesian_rl.py --env-id HalfCheetah-v4 --episodes 50 --save-tag halfcheetah_phase2
+python scripts/train_bayesian_rl.py --env-id HalfCheetah-v4 --save-tag halfcheetah_phase2
 tensorboard --logdir results/archive/tensorboard
 ```
+
+When `--episodes` is omitted, Phase 2 uses environment-aware diagnostic defaults: Hopper `80`, Ant `150`, HalfCheetah `50`, and Humanoid `200`. Environment-specific stats are archived under `results/archive/{env_id}/`.
 
 To render report-ready plots from TensorBoard logs, or from `latest_stats.json` when TensorBoard logs are unavailable:
 
 ```bash
 python scripts/visualize_logs.py --phase phase1 --tag seed7
+python scripts/visualize_logs.py --phase phase2 --tag halfcheetah_phase2 --env-id HalfCheetah-v4
 ```
 
 For Phase 3 hyperparameter posterior estimation:
