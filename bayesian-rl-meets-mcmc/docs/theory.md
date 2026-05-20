@@ -10,19 +10,9 @@ PAC-Bayes theory studies the performance of a stochastic predictor drawn from a 
 
 A canonical PAC-Bayes inequality relates the true risk of $Q$ to its empirical risk and its divergence from the prior:
 
-$$
-\mathrm{KL}
-\left(
-\widehat{L}(Q)
-\,\|\, L(Q)
-\right)
-\leq
-\frac{
-\mathrm{KL}(Q \,\|\, P) + \log \frac{2\sqrt{n}}{\delta}
-}{n}.
-$$
+$$\text{KL}(\widehat{L}(Q) \| L(Q)) \leq \frac{\text{KL}(Q \| P) + \log(2\sqrt{n}/\delta)}{n}.$$
 
-Here, $\widehat{L}(Q)$ denotes empirical loss, $L(Q)$ denotes population loss, $n$ is the number of observed samples or trajectories, and $\delta$ is the confidence tolerance. The term $\mathrm{KL}(Q \,\|\, P)$ formalises the price of posterior adaptation: a posterior that moves too far from its prior must earn that movement through empirical evidence.
+Here, $\widehat{L}(Q)$ denotes empirical loss, $L(Q)$ denotes population loss, $n$ is the number of observed samples or trajectories, and $\delta$ is the confidence tolerance. The term $\text{KL}(Q \| P)$ formalises the price of posterior adaptation: a posterior that moves too far from its prior must earn that movement through empirical evidence.
 
 For reinforcement learning, the immediate complication is that trajectories are adaptively collected rather than independently sampled. Nonetheless, the PAC-Bayesian perspective remains valuable because it frames posterior concentration as a measurable trade-off between fit and complexity.
 
@@ -30,19 +20,11 @@ For reinforcement learning, the immediate complication is that trajectories are 
 
 Bayesian regret measures expected performance shortfall relative to the optimal policy under the true environment parameter, integrated over the prior. For horizon $T$, a common expression is
 
-$$
-\mathrm{BayesRegret}(T)
-=
-\mathbb{E}_{M \sim P}
-\left[
-\sum_{t=1}^{T}
-\left(
-V^{\star}_{M}(s_t)
--
-V^{\pi_t}_{M}(s_t)
-\right)
-\right],
-$$
+$$\text{BayesRegret}(T) = \mathbb{E}_{M \sim P}[\sum_{t=1}^{T} (V^*_M(s_t) - V^{\pi_t}_M(s_t))].$$
+
+For return-based reporting, the same intuition is recorded as
+
+$$\text{BR}(T) = \mathbb{E}[\sum_{t=1}^{T} (r^* - r_t)].$$
 
 where $M$ is the latent Markov decision process sampled from the prior, $V^{\star}_{M}$ is the optimal value function, and $V^{\pi_t}_{M}$ is the value of the policy deployed at time $t$.
 
@@ -54,13 +36,7 @@ The connection between PAC-Bayes bounds and Bayesian regret lies in posterior co
 
 In this project, the posterior distribution $Q(\theta)$ is not merely a regulariser. It is an object of control:
 
-$$
-Q(\theta)
-\approx
-p(\theta \mid \mathcal{D})
-\propto
-p(\mathcal{D} \mid \theta)p(\theta).
-$$
+$$Q(\theta) \approx p(\theta \mid \mathcal{D}) \propto p(\mathcal{D} \mid \theta)p(\theta).$$
 
 If $Q$ is calibrated, then policy updates can marginalise over plausible parameter settings rather than committing to a fragile point estimate. This suggests a route by which PAC-Bayesian complexity control may indirectly improve Bayesian regret: posterior distributions that are neither over-dispersed nor over-concentrated should support exploration policies that better reflect the remaining uncertainty.
 
@@ -68,20 +44,7 @@ If $Q$ is calibrated, then policy updates can marginalise over plausible paramet
 
 The MCMC-VI framework can be interpreted as an attempt to preserve the statistical discipline of PAC-Bayes while improving the decision quality captured by Bayesian regret. Variational inference offers a tractable optimisation target, typically through
 
-$$
-\mathcal{L}_{\mathrm{ELBO}}(\phi)
-=
-\mathbb{E}_{q_{\phi}(\theta)}
-\left[
-\log p(\mathcal{D} \mid \theta)
-\right]
--
-\mathrm{KL}
-\left(
-q_{\phi}(\theta)
-\,\|\, p(\theta)
-\right),
-$$
+$$\mathcal{L}_{\text{ELBO}}(\phi) = \mathbb{E}_{q_\phi(\theta)}[\log p(\mathcal{D} \mid \theta)] - \text{KL}(q_\phi(\theta) \| p(\theta)),$$
 
 whereas SGLD or SGHMC can periodically correct or enrich the posterior approximation through stochastic sampling dynamics.
 

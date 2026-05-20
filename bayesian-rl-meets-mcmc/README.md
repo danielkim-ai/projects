@@ -14,35 +14,14 @@ We study a hybrid **MCMC-Variational Inference (VI)** framework for calibrated u
 
 ### Core Methods
 
-- **MCMC-Augmented Policy Optimization:** Using SGLD/SGHMC for approximate posterior sampling over policy and critic parameters, thereby replacing single-point updates with posterior-aware optimisation dynamics.
+- **MCMC-Augmented Policy Optimisation:** Using SGLD/SGHMC for approximate posterior sampling over policy and critic parameters, thereby replacing single-point updates with posterior-aware optimisation dynamics.
 - **Variational Actor-Critic (VAC):** Marginalising over parameter uncertainty through an evidence lower bound (ELBO), using objectives of the form
 
-  $$
-  \mathcal{L}_{\mathrm{ELBO}}(\phi)
-  =
-  \mathbb{E}_{q_{\phi}(\theta)}
-  \left[
-  \log p(\mathcal{D} \mid \theta)
-  \right]
-  -
-  \mathrm{KL}
-  \left(
-  q_{\phi}(\theta)
-  \,\|\, p(\theta)
-  \right).
-  $$
+  $$\mathcal{L}_{\text{ELBO}}(\phi) = \mathbb{E}_{q_\phi(\theta)}[\log p(\mathcal{D} \mid \theta)] - \text{KL}(q_\phi(\theta) \| p(\theta)).$$
 
 - **Bayesian Hyperparameter Inference:** Treating discount, entropy, and learning-rate parameters such as $\gamma$, $\alpha$, and $\eta$ as random variables rather than fixed constants:
 
-  $$
-  p(\theta, \gamma, \alpha, \eta \mid \mathcal{D})
-  \propto
-  p(\mathcal{D} \mid \theta, \gamma, \alpha, \eta)
-  p(\theta)
-  p(\gamma)
-  p(\alpha)
-  p(\eta).
-  $$
+  $$p(\theta, \gamma, \alpha, \eta \mid \mathcal{D}) \propto p(\mathcal{D} \mid \theta, \gamma, \alpha, \eta) p(\theta) p(\gamma) p(\alpha) p(\eta).$$
 
 ## Phase 1 Implementation
 
@@ -72,20 +51,7 @@ The script presently uses deterministic diagnostic traces so that the report pip
 - `src/sgld.py`: Stochastic Gradient Langevin Dynamics updates for approximate posterior sampling at SGD-like cost.
 - `src/vac.py`: Mean-field variational actor-critic modules and an ELBO-style objective,
 
-  $$
-  \mathcal{L}(\phi)
-  =
-  \mathbb{E}_{q_\phi(\theta)}
-  \left[
-  \sum_t r_t
-  \right]
-  -
-  \beta \cdot D_{\mathrm{KL}}
-  \left(
-  q_\phi(\theta)
-  \,\|\, p(\theta)
-  \right).
-  $$
+  $$\mathcal{L}(\phi) = \mathbb{E}_{q_\phi(\theta)}[\sum_t r_t] - \beta \cdot D_{\text{KL}}(q_\phi(\theta) \| p(\theta)).$$
 
 - `src/hybrid_recalibration.py`: A hybrid schedule in which VAC supplies online variational updates and SGLD periodically recalibrates the posterior approximation, especially when KL or effective sample size diagnostics suggest mode collapse.
 - `src/metrics.py`: Report-facing PAC-Bayes, regret, calibration, and effective sample size utilities.
@@ -98,3 +64,14 @@ The script presently uses deterministic diagnostic traces so that the report pip
 - Which hyperparameters, among $\gamma$, $\alpha$, and $\eta$, most materially affect Bayesian regret and posterior calibration?
 - How does the posterior over policy parameters evolve as rollout data arrive online, and what concept drift signals should trigger posterior discounting?
 - Can PAC-Bayes bounds be made tight enough to guide continuous-control policy selection, rather than merely supplying a retrospective certificate?
+
+## Quick Start
+
+From the repository root, run the Phase 1 low-data MuJoCo diagnostic artefact generator:
+
+```bash
+cd bayesian-rl-meets-mcmc
+python scripts/run_low_data_mujoco.py --episodes 12 --seed 7
+```
+
+The command writes `results/stats.json` and `results/mcmc_vs_vi_tradeoff.png`, allowing the report pipeline to verify PAC-Bayes, regret, calibration, and MCMC-VI trade-off fields before full MuJoCo rollout integration.
