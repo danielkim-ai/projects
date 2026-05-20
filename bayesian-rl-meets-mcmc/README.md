@@ -76,9 +76,14 @@ python scripts/run_low_data_mujoco.py --episodes 12 --seed 7
 
 The command writes `results/stats.json` and `results/mcmc_vs_vi_tradeoff.png`, allowing the report pipeline to verify PAC-Bayes, regret, calibration, and MCMC-VI trade-off fields before full MuJoCo rollout integration.
 
-For Google Colab, clone the repository and move into the actual project directory before installing dependencies:
+For Google Colab, mount Google Drive, create the working notebook directory if needed, clone the repository there, and move into the actual project directory before installing dependencies:
 
 ```python
+from google.colab import drive
+drive.mount("/content/drive")
+
+!mkdir -p "/content/drive/MyDrive/Colab Notebooks"
+%cd /content/drive/MyDrive/Colab\ Notebooks/
 !git clone https://github.com/danielkim-ai/projects.git
 %cd projects/projects/bayesian-rl-meets-mcmc
 !pip install -r setup/requirements.txt

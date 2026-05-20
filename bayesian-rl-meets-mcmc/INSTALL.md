@@ -168,6 +168,8 @@ Enable a GPU runtime through **Runtime -> Change runtime type -> GPU** before ex
 from google.colab import drive
 drive.mount("/content/drive")
 
+!mkdir -p "/content/drive/MyDrive/Colab Notebooks"
+%cd /content/drive/MyDrive/Colab\ Notebooks/
 !git clone https://github.com/danielkim-ai/projects.git
 %cd projects/projects/bayesian-rl-meets-mcmc
 
