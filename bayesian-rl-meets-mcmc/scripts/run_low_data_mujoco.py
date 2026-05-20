@@ -26,7 +26,7 @@ from src.metrics import (  # noqa: E402
     expected_calibration_error,
     pac_bayes_bound,
 )
-from src.result_io import run_id, update_latest_copy  # noqa: E402
+from src.result_io import archive_dir, run_id, update_latest_copy  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -42,6 +42,7 @@ def main() -> None:
     args = parse_args()
     rng = np.random.default_rng(args.seed)
     args.results_dir.mkdir(parents=True, exist_ok=True)
+    archive_path = archive_dir(args.results_dir)
     experiment_id = run_id(args.save_tag, phase="phase1", seed=args.seed)
 
     episodes = np.arange(1, args.episodes + 1)
@@ -77,13 +78,14 @@ def main() -> None:
             "oracle_return": oracle_returns.round(4).tolist(),
         },
         "report_contract": {
-            "required_files": ["latest_stats.json", f"plot_{experiment_id}.png"],
+            "required_files": ["latest_stats.json", "latest_mcmc_vs_vi_tradeoff.png"],
+            "archive_files": [f"stats_{experiment_id}.json", f"plot_{experiment_id}.png"],
             "consumer": "Antigravity",
-            "notes": "Synthetic diagnostics must be replaced by MuJoCo rollout data in Phase 2.",
+            "notes": "Antigravity should read only latest_* files from the results root; timestamped artefacts live in results/archive.",
         },
     }
 
-    stats_path = args.results_dir / f"stats_{experiment_id}.json"
+    stats_path = archive_path / f"stats_{experiment_id}.json"
     stats_path.write_text(json.dumps(stats, indent=2), encoding="utf-8")
     latest_stats_path = update_latest_copy(stats_path, "latest_stats.json")
 
@@ -96,7 +98,7 @@ def main() -> None:
     plt.title("MCMC vs VI trade-off under low-data MuJoCo protocol")
     plt.legend()
     plt.tight_layout()
-    plot_path = args.results_dir / f"plot_{experiment_id}.png"
+    plot_path = archive_path / f"plot_{experiment_id}.png"
     plt.savefig(plot_path, dpi=160)
     plt.close()
     latest_plot_path = update_latest_copy(plot_path, "latest_mcmc_vs_vi_tradeoff.png")

@@ -29,7 +29,7 @@ We study a hybrid **MCMC-Variational Inference (VI)** framework for calibrated u
 bayesian-rl-meets-mcmc/
   configs/   Hyperparameter prior specifications and experiment templates.
   docs/      Technical notes, theoretical derivations, and internal references.
-  results/   Logs, posterior diagnostics, plots, and evaluation artefacts.
+  results/   Latest report artefacts at root; timestamped runs in archive/.
   scripts/   Execution entry points for future training and evaluation workflows.
   requirements.txt and environment.yaml live at the project root.
   src/       Phase 1 SGLD, VAC, hybrid recalibration, and metric utilities.
@@ -39,10 +39,12 @@ bayesian-rl-meets-mcmc/
 
 This repository currently contains the project scaffold, Phase 1 algorithmic skeletons, documentation, and environment setup material. Full MuJoCo rollout collection, production training loops, posterior diagnostics, and empirical benchmark claims are intentionally deferred.
 
-The first experiment target is **Low-data MuJoCo**. The current report contract is implemented through `scripts/run_low_data_mujoco.py`, which writes:
+The first experiment target is **Low-data MuJoCo**. The current report contract is implemented through `scripts/run_low_data_mujoco.py`. Antigravity should always read only the latest files in the `results/` root:
 
-- `results/stats.json`, including PAC-Bayes bound, regret, calibration error, and effective sample size fields.
-- `results/mcmc_vs_vi_tradeoff.png`, a visual comparison surface for VAC/VI and SGLD-recalibrated traces.
+- `results/latest_stats.json`, including PAC-Bayes bound, regret, calibration error, and effective sample size fields.
+- `results/latest_mcmc_vs_vi_tradeoff.png`, a visual comparison surface for VAC/VI and SGLD-recalibrated traces.
+
+Timestamped experiment artefacts are retained under `results/archive/`.
 
 The script presently uses deterministic diagnostic traces so that the report pipeline can be validated before the real MuJoCo training loop is introduced.
 
@@ -74,14 +76,14 @@ cd bayesian-rl-meets-mcmc
 python scripts/run_low_data_mujoco.py --episodes 12 --seed 7 --save-tag phase1_seed7
 ```
 
-The command writes timestamped result files and refreshes `results/latest_stats.json`, allowing the report pipeline to verify PAC-Bayes, regret, calibration, and MCMC-VI trade-off fields before full MuJoCo rollout integration.
+The command writes timestamped result files under `results/archive/` and refreshes root-level `results/latest_stats.json` and `results/latest_mcmc_vs_vi_tradeoff.png`, allowing the report pipeline to verify PAC-Bayes, regret, calibration, and MCMC-VI trade-off fields before full MuJoCo rollout integration.
 
 To launch the MuJoCo training path with TensorBoard logging:
 
 ```bash
 cd bayesian-rl-meets-mcmc
 python scripts/train_bayesian_rl.py --env-id HalfCheetah-v4 --episodes 50 --save-tag halfcheetah_phase2
-tensorboard --logdir results/tensorboard
+tensorboard --logdir results/archive/tensorboard
 ```
 
 For Google Colab, mount Google Drive, create the working notebook directory if needed, clone the repository there, and move into the actual project directory before installing dependencies:

@@ -18,7 +18,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.hybrid_recalibration import HybridRecalibrationConfig, HybridRecalibrator  # noqa: E402
-from src.result_io import run_id, update_latest_copy  # noqa: E402
+from src.result_io import archive_dir, run_id, update_latest_copy  # noqa: E402
 from src.sgld import SGLDConfig  # noqa: E402
 from src.vac import VACConfig, VariationalActorCritic  # noqa: E402
 
@@ -46,7 +46,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--vi-epochs", type=int, default=4)
     parser.add_argument("--recalibrate-every", type=int, default=5)
     parser.add_argument("--ess-floor", type=float, default=8.0)
-    parser.add_argument("--log-dir", type=Path, default=PROJECT_ROOT / "results" / "tensorboard")
+    parser.add_argument("--log-dir", type=Path, default=PROJECT_ROOT / "results" / "archive" / "tensorboard")
     parser.add_argument("--results-dir", type=Path, default=PROJECT_ROOT / "results")
     parser.add_argument("--save-tag", default="phase2_mujoco")
     parser.add_argument("--seed", type=int, default=7)
@@ -136,6 +136,7 @@ def main() -> None:
     device = torch.device(args.device)
     experiment_id = run_id(args.save_tag, phase="phase2", seed=args.seed)
     args.results_dir.mkdir(parents=True, exist_ok=True)
+    archive_path = archive_dir(args.results_dir)
 
     env = gym.make(args.env_id)
     env.action_space.seed(args.seed)
@@ -224,7 +225,7 @@ def main() -> None:
     writer.close()
     env.close()
 
-    stats_path = args.results_dir / f"stats_{experiment_id}.json"
+    stats_path = archive_path / f"stats_{experiment_id}.json"
     stats = {
         "experiment": "bayesian-vac-sgld-mujoco-phase2",
         "experiment_id": experiment_id,

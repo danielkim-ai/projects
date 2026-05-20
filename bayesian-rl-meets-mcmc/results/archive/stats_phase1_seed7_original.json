@@ -1,0 +1,78 @@
+{
+  "experiment": "low-data-mujoco-sgld-phase1",
+  "status": "ready_for_real_rollout_integration",
+  "episodes": 12,
+  "seed": 7,
+  "metrics": {
+    "pac_bayes_bound": 1.0915563405075925,
+    "regret": 212.1771898613347,
+    "calibration_error": 0.11407375798996491,
+    "effective_sample_size": 2.9208684122846127
+  },
+  "series": {
+    "episode": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "vi_return": [
+      125.5489,
+      129.6851,
+      130.2679,
+      130.2037,
+      132.9701,
+      132.5923,
+      136.816,
+      141.5984,
+      136.9441,
+      137.3217,
+      141.3488,
+      141.5903
+    ],
+    "sgld_return": [
+      126.813,
+      130.2568,
+      132.8622,
+      134.4073,
+      134.5212,
+      135.7903,
+      138.0953,
+      143.9875,
+      138.6545,
+      141.5587,
+      144.128,
+      146.7482
+    ],
+    "oracle_return": [
+      155.0,
+      155.0,
+      155.0,
+      155.0,
+      155.0,
+      155.0,
+      155.0,
+      155.0,
+      155.0,
+      155.0,
+      155.0,
+      155.0
+    ]
+  },
+  "report_contract": {
+    "required_files": [
+      "stats.json",
+      "mcmc_vs_vi_tradeoff.png"
+    ],
+    "consumer": "Antigravity",
+    "notes": "Synthetic diagnostics must be replaced by MuJoCo rollout data in Phase 2."
+  }
+}
