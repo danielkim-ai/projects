@@ -17,6 +17,10 @@ class VACConfig:
     action_dim: int
     hidden_dim: int = 64
     beta_kl: float = 1.0e-3
+    target_kl: float = 0.03
+    beta_lr: float = 0.05
+    min_beta_kl: float = 1.0e-5
+    max_beta_kl: float = 1.0
     min_log_std: float = -5.0
     max_log_std: float = 2.0
 
@@ -65,6 +69,7 @@ class VariationalActorCritic(nn.Module):
             VariationalLinear(config.hidden_dim, config.hidden_dim),
             nn.Tanh(),
         )
+        self.beta_kl = float(config.beta_kl)
         self.actor_mean = VariationalLinear(config.hidden_dim, config.action_dim)
         self.actor_log_std = nn.Parameter(torch.full((config.action_dim,), -0.5))
 
@@ -106,12 +111,31 @@ class VariationalActorCritic(nn.Module):
         actor_loss = -(log_prob * advantages.detach()).mean()
         critic_loss = 0.5 * (returns - values).pow(2).mean()
         kl = self.kl_to_prior() / max(1, observations.shape[0])
-        loss = actor_loss + critic_loss + self.config.beta_kl * kl
+        loss = actor_loss + critic_loss + self.beta_kl * kl
 
         return {
             "loss": loss,
             "actor_loss": actor_loss.detach(),
             "critic_loss": critic_loss.detach(),
             "kl": kl.detach(),
+            "beta_kl": torch.tensor(self.beta_kl, device=observations.device),
         }
+
+    def update_beta_kl(self, observed_kl: float) -> float:
+        """Adapt the KL weight towards a target posterior complexity."""
+
+        direction = 1.0 if observed_kl > self.config.target_kl else -1.0
+        scale = abs(observed_kl - self.config.target_kl) / max(self.config.target_kl, 1.0e-8)
+        self.beta_kl *= float(torch.exp(torch.tensor(direction * self.config.beta_lr * scale)))
+        self.beta_kl = min(max(self.beta_kl, self.config.min_beta_kl), self.config.max_beta_kl)
+        return self.beta_kl
+
+    @torch.no_grad()
+    def act(self, observation: torch.Tensor, deterministic: bool = False) -> tuple[torch.Tensor, torch.Tensor]:
+        """Sample an action and its log probability for rollout collection."""
+
+        dist = self.policy_distribution(observation)
+        raw_action = dist.mean if deterministic else dist.rsample()
+        log_prob = dist.log_prob(raw_action).sum(dim=-1)
+        return torch.tanh(raw_action), log_prob
 

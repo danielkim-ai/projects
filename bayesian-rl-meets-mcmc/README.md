@@ -76,6 +76,14 @@ python scripts/run_low_data_mujoco.py --episodes 12 --seed 7
 
 The command writes `results/stats.json` and `results/mcmc_vs_vi_tradeoff.png`, allowing the report pipeline to verify PAC-Bayes, regret, calibration, and MCMC-VI trade-off fields before full MuJoCo rollout integration.
 
+To launch the MuJoCo training path with TensorBoard logging:
+
+```bash
+cd bayesian-rl-meets-mcmc
+python scripts/train_bayesian_rl.py --env-id HalfCheetah-v4 --episodes 50
+tensorboard --logdir results/tensorboard
+```
+
 For Google Colab, mount Google Drive, create the working notebook directory if needed, clone the repository there, and move into the actual project directory before installing dependencies:
 
 ```python
