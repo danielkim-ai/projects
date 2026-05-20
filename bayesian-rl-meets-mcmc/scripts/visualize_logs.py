@@ -84,7 +84,7 @@ def read_latest_stats(results_dir: Path) -> list[tuple[np.ndarray, np.ndarray]]:
     stats_path = results_dir / "latest_stats.json"
     if not stats_path.exists():
         return []
-    stats = json.loads(stats_path.read_text(encoding="utf-8"))
+    stats = json.loads(stats_path.read_text(encoding="utf-8-sig"))
     series = stats.get("series", {})
     if "episode" in series and "sgld_return" in series:
         return [
@@ -102,6 +102,34 @@ def read_latest_stats(results_dir: Path) -> list[tuple[np.ndarray, np.ndarray]]:
             )
         ]
     return []
+
+
+def read_tensorboard_hypers(log_dir: Path, tag: str) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    hypers: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    for name in ("gamma", "alpha"):
+        runs = read_tensorboard_runs(log_dir, f"hyperparameter/{name}", tag)
+        if runs:
+            steps, mean, _ = aggregate_runs(runs)
+            hypers[name] = (steps, mean)
+    return hypers
+
+
+def read_latest_hypers(results_dir: Path) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    stats_path = results_dir / "latest_stats.json"
+    if not stats_path.exists():
+        return {}
+    stats = json.loads(stats_path.read_text(encoding="utf-8-sig"))
+    samples = stats.get("hyperparameter_samples") or []
+    if not samples:
+        summaries = stats.get("episodes_summary", [])
+        samples = [item for item in summaries if "gamma" in item and "alpha" in item]
+    if not samples:
+        return {}
+    episodes = np.asarray([item["episode"] for item in samples], dtype=float)
+    return {
+        "gamma": (episodes, np.asarray([item["gamma"] for item in samples], dtype=float)),
+        "alpha": (episodes, np.asarray([item["alpha"] for item in samples], dtype=float)),
+    }
 
 
 def aggregate_runs(runs: list[tuple[np.ndarray, np.ndarray]]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -143,6 +171,32 @@ def plot_comparison(steps: np.ndarray, mean: np.ndarray, std: np.ndarray, output
     plt.close()
 
 
+def plot_hyperparameters(hypers: dict[str, tuple[np.ndarray, np.ndarray]], output_path: Path, phase: str) -> None:
+    fig, axes = plt.subplots(2, 2, figsize=(10, 7))
+    colours = {"gamma": "#1f4e79", "alpha": "#7b3294"}
+    labels = {"gamma": "Discount Posterior Gamma", "alpha": "Entropy Posterior Alpha"}
+
+    for row, name in enumerate(("gamma", "alpha")):
+        if name not in hypers:
+            axes[row, 0].axis("off")
+            axes[row, 1].axis("off")
+            continue
+        steps, values = hypers[name]
+        axes[row, 0].plot(steps, values, color=colours[name], linewidth=2.0)
+        axes[row, 0].set_xlabel("Optimisation Steps")
+        axes[row, 0].set_ylabel(labels[name])
+        axes[row, 0].grid(alpha=0.25)
+        axes[row, 1].hist(values, bins=min(20, max(5, len(values))), color=colours[name], alpha=0.72)
+        axes[row, 1].set_xlabel(labels[name])
+        axes[row, 1].set_ylabel("Posterior Frequency")
+        axes[row, 1].grid(alpha=0.2)
+
+    fig.suptitle(f"Hyperparameter Posterior Estimation - {phase}")
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=180)
+    plt.close(fig)
+
+
 def main() -> None:
     args = parse_args()
     output_dir, latest_path, stamp = output_paths(args.results_dir, args.phase, args.tag)
@@ -160,6 +214,17 @@ def main() -> None:
     plot_comparison(steps, mean, std, output_path, args.phase)
     shutil.copy2(output_path, latest_path)
 
+    hypers = read_tensorboard_hypers(args.log_dir, args.tag)
+    if not hypers:
+        hypers = read_latest_hypers(args.results_dir)
+    if hypers:
+        hyper_path = output_dir / f"hyperparameter_posterior_{stamp}.png"
+        latest_hyper_path = latest_path.with_name("latest_hyperparameters.png")
+        plot_hyperparameters(hypers, hyper_path, args.phase)
+        shutil.copy2(hyper_path, latest_hyper_path)
+        print(f"Wrote {hyper_path}")
+        print(f"Wrote {latest_hyper_path}")
+
     print(f"Source: {source}")
     print(f"Wrote {output_path}")
     print(f"Wrote {latest_path}")
@@ -167,4 +232,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

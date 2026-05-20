@@ -19,7 +19,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.hybrid_recalibration import HybridRecalibrationConfig, HybridRecalibrator  # noqa: E402
 from src.result_io import archive_dir, run_id, update_latest_copy  # noqa: E402
-from src.sgld import SGLDConfig  # noqa: E402
+from src.sgld import HyperparameterPosteriorSampler, SGLDConfig  # noqa: E402
 from src.vac import VACConfig, VariationalActorCritic  # noqa: E402
 
 
@@ -35,6 +35,7 @@ class RolloutBatch:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Bayesian VAC + Preconditioned SGLD trainer.")
+    parser.add_argument("--phase", default="phase2")
     parser.add_argument("--env-id", default="HalfCheetah-v4")
     parser.add_argument("--episodes", type=int, default=50)
     parser.add_argument("--rollout-steps", type=int, default=512)
@@ -48,10 +49,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ess-floor", type=float, default=8.0)
     parser.add_argument("--log-dir", type=Path, default=PROJECT_ROOT / "results" / "archive" / "tensorboard")
     parser.add_argument("--results-dir", type=Path, default=PROJECT_ROOT / "results")
-    parser.add_argument("--save-tag", default="phase2_mujoco")
+    parser.add_argument("--save-tag", "--tag", dest="save_tag", default="phase2_mujoco")
+    parser.add_argument("--sample-hypers", "--sample_hypers", default="false")
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     return parser.parse_args()
+
+
+def parse_bool(value: str | bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
 def scale_action(action: np.ndarray, env: Any) -> np.ndarray:
@@ -134,7 +142,8 @@ def main() -> None:
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     device = torch.device(args.device)
-    experiment_id = run_id(args.save_tag, phase="phase2", seed=args.seed)
+    sample_hypers = parse_bool(args.sample_hypers)
+    experiment_id = run_id(args.save_tag, phase=args.phase, seed=args.seed)
     args.results_dir.mkdir(parents=True, exist_ok=True)
     archive_path = archive_dir(args.results_dir)
 
@@ -160,6 +169,11 @@ def main() -> None:
             sgld=SGLDConfig(step_size=args.lr * 0.1, prior_precision=1.0e-2),
         ),
     )
+    hyper_sampler = HyperparameterPosteriorSampler(
+        initial_gamma=args.gamma,
+        initial_alpha=0.1,
+    )
+    hyper_sample = hyper_sampler.sample()
 
     writer = SummaryWriter(args.log_dir / args.env_id / experiment_id)
     latest_metrics: dict[str, torch.Tensor] | None = None
@@ -168,11 +182,19 @@ def main() -> None:
     for episode in range(1, args.episodes + 1):
         if episode > 1:
             recalibrator.sgld.load_posterior_sample(model, recalibrator.sample_policy_state())
-        batch = collect_rollout(env, model, device, args.rollout_steps, args.gamma, args.gae_lambda)
+        gamma_value = hyper_sample.gamma if sample_hypers else args.gamma
+        alpha_value = hyper_sample.alpha if sample_hypers else 0.0
+        batch = collect_rollout(env, model, device, args.rollout_steps, gamma_value, args.gae_lambda)
 
         for _ in range(args.vi_epochs):
             optimiser.zero_grad(set_to_none=True)
-            metrics = model.elbo_loss(batch.observations, batch.actions, batch.returns, batch.advantages)
+            metrics = model.elbo_loss(
+                batch.observations,
+                batch.actions,
+                batch.returns,
+                batch.advantages,
+                entropy_coeff=alpha_value,
+            )
             metrics["loss"].backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 10.0)
             optimiser.step()
@@ -192,6 +214,7 @@ def main() -> None:
                     batch.actions,
                     batch.returns,
                     batch.advantages,
+                    entropy_coeff=alpha_value,
                 )["loss"]
 
             mcmc_losses = recalibrator.recalibrate(closure, force_warmup=force_warmup)
@@ -206,6 +229,10 @@ def main() -> None:
         writer.add_scalar("vac/kl", kl_value, episode)
         writer.add_scalar("vac/beta_kl", beta_value, episode)
         writer.add_scalar("mcmc/ess", ess_value, episode)
+        writer.add_scalar("hyperparameter/gamma", gamma_value, episode)
+        writer.add_scalar("hyperparameter/alpha", alpha_value, episode)
+        if sample_hypers:
+            hyper_sample = hyper_sampler.update(batch.episode_return, episode)
         episode_summaries.append(
             {
                 "episode": float(episode),
@@ -214,12 +241,15 @@ def main() -> None:
                 "kl": kl_value,
                 "beta_kl": beta_value,
                 "ess": float(ess_value),
+                "gamma": float(gamma_value),
+                "alpha": float(alpha_value),
             }
         )
 
         print(
             f"episode={episode} return={batch.episode_return:.2f} "
-            f"kl={kl_value:.4f} beta={beta_value:.5f} ess={ess_value:.2f}"
+            f"kl={kl_value:.4f} beta={beta_value:.5f} ess={ess_value:.2f} "
+            f"gamma={gamma_value:.4f} alpha={alpha_value:.5f}"
         )
 
     writer.close()
@@ -227,12 +257,15 @@ def main() -> None:
 
     stats_path = archive_path / f"stats_{experiment_id}.json"
     stats = {
-        "experiment": "bayesian-vac-sgld-mujoco-phase2",
+        "experiment": f"bayesian-vac-sgld-mujoco-{args.phase}",
         "experiment_id": experiment_id,
+        "phase": args.phase,
         "env_id": args.env_id,
         "seed": args.seed,
         "episodes": args.episodes,
         "rollout_steps": args.rollout_steps,
+        "sample_hypers": sample_hypers,
+        "hyperparameter_samples": hyper_sampler.samples,
         "tensorboard_logdir": str(args.log_dir / args.env_id / experiment_id),
         "episodes_summary": episode_summaries,
     }

@@ -103,23 +103,27 @@ class VariationalActorCritic(nn.Module):
         actions: torch.Tensor,
         returns: torch.Tensor,
         advantages: torch.Tensor,
+        entropy_coeff: float = 0.0,
     ) -> dict[str, torch.Tensor]:
         """Compute a Phase 1 VAC loss from a rollout batch."""
 
         dist = self.policy_distribution(observations)
         log_prob = dist.log_prob(actions).sum(dim=-1)
         values = self.value(observations)
+        entropy = dist.entropy().sum(dim=-1).mean()
 
         actor_loss = -(log_prob * advantages.detach()).mean()
         critic_loss = 0.5 * (returns - values).pow(2).mean()
         kl = self.kl_to_prior() / max(1, observations.shape[0])
-        loss = actor_loss + critic_loss + self.beta_kl * kl
+        loss = actor_loss + critic_loss + self.beta_kl * kl - entropy_coeff * entropy
 
         return {
             "loss": loss,
             "actor_loss": actor_loss.detach(),
             "critic_loss": critic_loss.detach(),
             "kl": kl.detach(),
+            "entropy": entropy.detach(),
+            "entropy_coeff": torch.tensor(entropy_coeff, device=observations.device),
             "beta_kl": torch.tensor(self.beta_kl, device=observations.device),
         }
 

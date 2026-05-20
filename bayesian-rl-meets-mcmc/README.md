@@ -93,6 +93,15 @@ To render report-ready plots from TensorBoard logs, or from `latest_stats.json` 
 python scripts/visualize_logs.py --phase phase1 --tag seed7
 ```
 
+For Phase 3 hyperparameter posterior estimation:
+
+```bash
+python scripts/train_bayesian_rl.py --phase phase3 --tag hyper_study --sample_hypers true
+python scripts/visualize_logs.py --phase phase3 --tag hyper_study
+```
+
+When $\gamma$ and $\alpha$ samples are available, the visualiser also writes hyperparameter posterior trajectories and histograms to `results/plots/{phase}/{tag_timestamp}/` and refreshes `results/plots/{phase}/latest_hyperparameters.png`.
+
 For Google Colab, mount Google Drive, create the working notebook directory if needed, clone the repository there, and move into the actual project directory before installing dependencies:
 
 ```python
