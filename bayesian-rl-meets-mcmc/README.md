@@ -45,6 +45,7 @@ The first experiment target is **Low-data MuJoCo**. The current report contract 
 - `results/latest_mcmc_vs_vi_tradeoff.png`, a visual comparison surface for VAC/VI and SGLD-recalibrated traces.
 
 Timestamped experiment artefacts are retained under `results/archive/`.
+Matplotlib visualisations are archived under `results/plots/{phase}/{tag_timestamp}/`, while Antigravity should read the phase-level latest plot, for example `results/plots/phase1/latest_comparison.png`.
 
 The script presently uses deterministic diagnostic traces so that the report pipeline can be validated before the real MuJoCo training loop is introduced.
 
@@ -84,6 +85,12 @@ To launch the MuJoCo training path with TensorBoard logging:
 cd bayesian-rl-meets-mcmc
 python scripts/train_bayesian_rl.py --env-id HalfCheetah-v4 --episodes 50 --save-tag halfcheetah_phase2
 tensorboard --logdir results/archive/tensorboard
+```
+
+To render report-ready plots from TensorBoard logs, or from `latest_stats.json` when TensorBoard logs are unavailable:
+
+```bash
+python scripts/visualize_logs.py --phase phase1 --tag seed7
 ```
 
 For Google Colab, mount Google Drive, create the working notebook directory if needed, clone the repository there, and move into the actual project directory before installing dependencies:
