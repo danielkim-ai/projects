@@ -168,8 +168,8 @@ Enable a GPU runtime through **Runtime -> Change runtime type -> GPU** before ex
 from google.colab import drive
 drive.mount("/content/drive")
 
-!git clone https://github.com/danielkim-ai/projects.git /content/projects
-%cd /content/projects/projects/bayesian-rl-meets-mcmc
+!git clone https://github.com/danielkim-ai/projects.git
+%cd projects/projects/bayesian-rl-meets-mcmc
 
 !python -m pip install --upgrade pip setuptools wheel
 !pip install -r setup/requirements.txt
