@@ -17,11 +17,11 @@ We study a hybrid **MCMC-Variational Inference (VI)** framework for calibrated u
 - **MCMC-Augmented Policy Optimisation:** Using SGLD/SGHMC for approximate posterior sampling over policy and critic parameters, thereby replacing single-point updates with posterior-aware optimisation dynamics.
 - **Variational Actor-Critic (VAC):** Marginalising over parameter uncertainty through an evidence lower bound (ELBO), using objectives of the form
 
-  $$\mathcal{L}_{\text{ELBO}}(\phi) = \mathbb{E}_{q_{\phi}(\theta)} \left[ \log p(\mathcal{D} \mid \theta) \right] - \text{KL}(q_{\phi}(\theta) \,\|\, p(\theta))$$
+$$\mathcal{L}_{\text{ELBO}}(\phi) = \mathbb{E}_{q_{\phi}(\theta)} \left[ \log p(\mathcal{D} \mid \theta) \right] - \text{KL}(q_{\phi}(\theta) \,\|\, p(\theta))$$
 
 - **Bayesian Hyperparameter Inference:** Treating discount, entropy, and learning-rate parameters such as $\gamma$, $\alpha$, and $\eta$ as random variables rather than fixed constants:
 
-  $$p(\theta, \gamma, \alpha, \eta \mid \mathcal{D}) \propto p(\mathcal{D} \mid \theta, \gamma, \alpha, \eta) p(\theta) p(\gamma) p(\alpha) p(\eta)$$
+$$p(\theta, \gamma, \alpha, \eta \mid \mathcal{D}) \propto p(\mathcal{D} \mid \theta, \gamma, \alpha, \eta) p(\theta) p(\gamma) p(\alpha) p(\eta)$$
 
 ## Phase 1 Implementation
 
@@ -54,7 +54,7 @@ The script presently uses deterministic diagnostic traces so that the report pip
 - `src/sgld.py`: Stochastic Gradient Langevin Dynamics updates for approximate posterior sampling at SGD-like cost.
 - `src/vac.py`: Mean-field variational actor-critic modules and an ELBO-style objective,
 
-  $$\mathcal{L}(\phi) = \mathbb{E}_{q_{\phi}(\theta)} \left[ \sum_t r_t \right] - \beta \cdot D_{\text{KL}}(q_{\phi}(\theta) \,\|\, p(\theta))$$
+$$\mathcal{L}(\phi) = \mathbb{E}_{q_{\phi}(\theta)} \left[ \sum_t r_t \right] - \beta \cdot D_{\text{KL}}(q_{\phi}(\theta) \,\|\, p(\theta))$$
 
 - `src/hybrid_recalibration.py`: A hybrid schedule in which VAC supplies online variational updates and SGLD periodically recalibrates the posterior approximation, especially when KL or effective sample size diagnostics suggest mode collapse.
 - `src/metrics.py`: Report-facing PAC-Bayes, regret, calibration, and effective sample size utilities.
