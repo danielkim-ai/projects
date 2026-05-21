@@ -70,39 +70,39 @@ $$\mathcal{L}(\phi) = \mathbb{E}_{q_{\phi}(\theta)} \left[ \sum_t r_t \right] - 
 
 ## Quick Start
 
-From the repository root, run the Phase 1 low-data MuJoCo diagnostic artefact generator:
+From the project directory, use the following command templates. They are written with the Colab `!` prefix so they can be copied directly into a notebook cell after installation.
+
+Note: Always specify `--env-id` for environment-dependent training and visualisation to ensure environment-specific optimisation.
+
+### Phase 1 Diagnostic
 
 ```bash
-cd bayesian-rl-meets-mcmc
-python scripts/run_low_data_mujoco.py --episodes 12 --seed 7 --save-tag phase1_seed7
+!python scripts/run_low_data_mujoco.py --episodes 12 --seed 7 --save-tag phase1_seed7
+!python scripts/visualize_logs.py --phase phase1 --tag seed7
 ```
 
 The command writes timestamped result files under `results/archive/` and refreshes root-level `results/latest_stats.json` and `results/latest_mcmc_vs_vi_tradeoff.png`, allowing the report pipeline to verify PAC-Bayes, regret, calibration, and MCMC-VI trade-off fields before full MuJoCo rollout integration.
 
-To launch the MuJoCo training path with TensorBoard logging:
+### Phase 2 Performance
 
 ```bash
-cd bayesian-rl-meets-mcmc
-python scripts/train_bayesian_rl.py --env-id HalfCheetah-v4 --episodes 50 --save-tag halfcheetah_phase2
-tensorboard --logdir results/archive/tensorboard
+!python scripts/train_bayesian_rl.py --env-id HalfCheetah-v4 --episodes 50 --save-tag halfcheetah_phase2
+!python scripts/visualize_logs.py --phase phase2 --tag halfcheetah_phase2 --env-id HalfCheetah-v4
 ```
-
-Note: Always specify `--env-id` to ensure environment-specific optimisation.
 
 When `--episodes` is omitted, Phase 2 uses environment-aware diagnostic defaults: Hopper `80`, Ant `150`, HalfCheetah `50`, and Humanoid `200`. Environment-specific stats are archived under `results/archive/{env_id}/`.
 
-To render report-ready plots from TensorBoard logs, or from `latest_stats.json` when TensorBoard logs are unavailable:
+To inspect TensorBoard logs after a training run:
 
 ```bash
-python scripts/visualize_logs.py --phase phase1 --tag seed7
-python scripts/visualize_logs.py --phase phase2 --tag halfcheetah_phase2 --env-id HalfCheetah-v4
+!tensorboard --logdir results/archive/tensorboard
 ```
 
-For Phase 3 hyperparameter posterior estimation:
+### Phase 3 Hyperparameter Study
 
 ```bash
-python scripts/train_bayesian_rl.py --env-id HalfCheetah-v4 --episodes 200 --phase phase3 --tag hyper_study --sample_hypers true
-python scripts/visualize_logs.py --phase phase3 --tag hyper_study
+!python scripts/train_bayesian_rl.py --env-id HalfCheetah-v4 --episodes 200 --phase phase3 --tag hyper_study --sample_hypers true
+!python scripts/visualize_logs.py --phase phase3 --tag hyper_study --env-id HalfCheetah-v4
 ```
 
 When $\gamma$ and $\alpha$ samples are available, the visualiser also writes hyperparameter posterior trajectories and histograms to `results/plots/{phase}/{tag_timestamp}/` and refreshes `results/plots/{phase}/latest_hyperparameters.png`.

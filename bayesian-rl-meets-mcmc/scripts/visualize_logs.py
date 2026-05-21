@@ -28,7 +28,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--log-dir", type=Path, default=PROJECT_ROOT / "results" / "archive" / "tensorboard")
     parser.add_argument("--results-dir", type=Path, default=PROJECT_ROOT / "results")
     parser.add_argument("--env-id", default=None, help="Optional environment identifier for environment-specific logs.")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.phase.lower() in {"phase2", "phase3"} and not args.env_id:
+        parser.error("--env-id is required for Phase 2 and Phase 3 visualisation.")
+    return args
 
 
 def timestamp() -> str:
