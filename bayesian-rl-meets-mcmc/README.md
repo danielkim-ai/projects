@@ -4,7 +4,7 @@
 
 This project investigates **Bayesian RL Meets MCMC -- Sample Efficiency via Posterior Estimation**, with particular emphasis on the epistemic fragility of point estimates in reinforcement learning under severe data scarcity.
 
-Status: **Successfully validated across major MuJoCo benchmarks (Phase 1-3)**, including HalfCheetah-v4, Ant-v4, Hopper-v4, and Humanoid-v4.
+Status: **Phase 1-4 complete, including Privacy-Preserving Analysis**. The project has been validated across major MuJoCo benchmarks, including HalfCheetah-v4, Ant-v4, Hopper-v4, and Humanoid-v4, with **Differential Privacy Integration** serving as the final research milestone.
 
 ### Problem
 
@@ -39,7 +39,7 @@ bayesian-rl-meets-mcmc/
 
 ## Current Status
 
-This repository currently contains the project scaffold, Phase 1 diagnostic pipeline, Phase 2 MuJoCo training loop, Phase 3 hyperparameter posterior sampling, Phase 4 privacy-preserving DP-SGLD hooks, documentation, and environment setup material. Phases 1-3 have been validated across HalfCheetah-v4, Ant-v4, Hopper-v4, and Humanoid-v4.
+This repository currently contains the project scaffold, Phase 1 diagnostic pipeline, Phase 2 MuJoCo training loop, Phase 3 hyperparameter posterior sampling, Phase 4 privacy-preserving DP-SGLD hooks, privacy analysis tooling, documentation, and environment setup material. Phases 1-4 have been validated across HalfCheetah-v4, Ant-v4, Hopper-v4, and Humanoid-v4.
 
 The first experiment target is **Low-data MuJoCo**. The current report contract is implemented through `scripts/run_low_data_mujoco.py`. Antigravity should always read only the latest files in the `results/` root:
 
@@ -115,7 +115,7 @@ When $\gamma$ and $\alpha$ samples are available, the visualiser also writes hyp
 
 ### Phase 4 Privacy-Preserving Reinforcement Learning
 
-The next research step is to combine Differential Privacy (DP) with SGLD so that posterior sampling noise and Gaussian privacy noise jointly support safer reinforcement learning without avoidable performance degradation. The Phase 4 implementation path will compare privacy strengths on Ant-v4 and Humanoid-v4 while tracking return, calibration, regret, and cumulative privacy cost.
+The final milestone is **Differential Privacy Integration**: combining Differential Privacy (DP) with SGLD so that posterior sampling noise and Gaussian privacy noise jointly support safer reinforcement learning without avoidable performance degradation. The Phase 4 analysis compares privacy strengths while tracking return, calibration, regret, and cumulative privacy cost.
 
 DP-SGLD experiments activate gradient clipping, Gaussian privacy noise, and TensorBoard privacy-budget traces. Use Ant and Humanoid to inspect how stronger privacy constraints affect expected return, calibration, and posterior recalibration:
 
@@ -126,6 +126,17 @@ DP-SGLD experiments activate gradient clipping, Gaussian privacy noise, and Tens
 ```
 
 The cumulative privacy cost is logged as `privacy/epsilon_spent`, with the target budget saved in `results/latest_stats.json` under the `privacy` field.
+
+For a HalfCheetah-v4 epsilon sensitivity ablation, run the same privacy-enabled training protocol at three privacy strengths and then generate the analysis figures:
+
+```bash
+!python scripts/train_bayesian_rl.py --env-id HalfCheetah-v4 --episodes 50 --phase phase4 --tag halfcheetah_privacy_eps1 --privacy true --epsilon 1.0
+!python scripts/train_bayesian_rl.py --env-id HalfCheetah-v4 --episodes 50 --phase phase4 --tag halfcheetah_privacy_eps4 --privacy true --epsilon 4.0
+!python scripts/train_bayesian_rl.py --env-id HalfCheetah-v4 --episodes 50 --phase phase4 --tag halfcheetah_privacy_eps16 --privacy true --epsilon 16.0
+!python scripts/analyse_privacy.py --env-id HalfCheetah-v4 --epsilons 1.0 4.0 16.0
+```
+
+The analysis script writes `epsilon_sensitivity_*.png` and `privacy_loss_*.png` to `results/plots/phase4/analysis/`, alongside `latest_epsilon_sensitivity.png` and `latest_privacy_loss.png` for report automation.
 
 For Google Colab, mount Google Drive, create the working notebook directory if needed, clone the repository there, and move into the actual project directory before installing dependencies:
 
