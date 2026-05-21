@@ -136,6 +136,8 @@ For a HalfCheetah-v4 epsilon sensitivity ablation, run the same privacy-enabled 
 !python scripts/analyse_privacy.py --env-id HalfCheetah-v4 --epsilons 1.0 4.0 16.0
 ```
 
+Phase 4 TensorBoard logs are written to `results/logs/phase4/{tag}/`, for example `results/logs/phase4/halfcheetah_privacy_eps4/`. The analyser supports absolute paths and paths relative to either the shell working directory or the project root via `--log-dir`.
+
 The analysis script writes `epsilon_sensitivity_*.png` and `privacy_loss_*.png` to `results/plots/phase4/analysis/`, alongside `latest_epsilon_sensitivity.png` and `latest_privacy_loss.png` for report automation.
 
 For Google Colab, mount Google Drive, create the working notebook directory if needed, clone the repository there, and move into the actual project directory before installing dependencies:

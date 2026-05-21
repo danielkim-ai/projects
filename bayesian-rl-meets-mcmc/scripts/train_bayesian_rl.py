@@ -103,6 +103,14 @@ def estimate_privacy_composition_steps(
     return max(1, vi_steps + sgld_steps)
 
 
+def tensorboard_logdir(args: argparse.Namespace, experiment_id: str, env_folder: str) -> Path:
+    """Return the TensorBoard log directory for the current phase."""
+
+    if args.phase.lower() == "phase4":
+        return args.results_dir / "logs" / "phase4" / safe_tag(args.save_tag, "phase4")
+    return args.log_dir / env_folder / experiment_id
+
+
 def scale_action(action: np.ndarray, env: Any) -> np.ndarray:
     low = env.action_space.low
     high = env.action_space.high
@@ -239,7 +247,8 @@ def main() -> None:
     )
     hyper_sample = hyper_sampler.sample()
 
-    writer = SummaryWriter(args.log_dir / env_folder / experiment_id)
+    writer_logdir = tensorboard_logdir(args, experiment_id, env_folder)
+    writer = SummaryWriter(writer_logdir)
     latest_metrics: dict[str, torch.Tensor] | None = None
     episode_summaries: list[dict[str, float]] = []
 
@@ -344,7 +353,7 @@ def main() -> None:
         "privacy": privacy_accountant.snapshot(),
         "hyperparameter_samples": hyper_sampler.samples,
         "environment_archive": str(archive_path),
-        "tensorboard_logdir": str(args.log_dir / env_folder / experiment_id),
+        "tensorboard_logdir": str(writer_logdir),
         "episodes_summary": episode_summaries,
     }
     stats_path.write_text(json.dumps(stats, indent=2), encoding="utf-8")

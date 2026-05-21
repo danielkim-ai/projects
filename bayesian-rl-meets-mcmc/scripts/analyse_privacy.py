@@ -29,7 +29,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tag-template", default="halfcheetah_privacy_eps{epsilon:g}")
     parser.add_argument("--return-scalar", default="rollout/return")
     parser.add_argument("--privacy-scalar", default="privacy/epsilon_spent")
-    parser.add_argument("--log-dir", type=Path, default=PROJECT_ROOT / "results" / "archive" / "tensorboard")
+    parser.add_argument("--log-dir", type=Path, default=PROJECT_ROOT / "results" / "logs" / "phase4")
     parser.add_argument("--results-dir", type=Path, default=PROJECT_ROOT / "results")
     parser.add_argument("--delta", type=float, default=1.0e-5)
     parser.add_argument("--clip-norm", type=float, default=1.0)
@@ -49,27 +49,66 @@ def tag_for_epsilon(template: str, epsilon: float) -> str:
     return template.format(epsilon=epsilon)
 
 
+def resolve_input_path(path: Path) -> list[Path]:
+    """Support absolute paths and paths relative to cwd or the project root."""
+
+    if path.is_absolute():
+        return [path.resolve(strict=False)]
+    return [
+        (Path.cwd() / path).resolve(strict=False),
+        (PROJECT_ROOT / path).resolve(strict=False),
+    ]
+
+
+def tensorboard_search_roots(log_dir: Path, tag: str) -> tuple[list[Path], list[Path]]:
+    """Return existing TensorBoard roots and every path attempted."""
+
+    attempted: list[Path] = []
+    roots: list[Path] = []
+    candidate_bases = resolve_input_path(log_dir)
+    candidate_bases.extend(
+        [
+            PROJECT_ROOT / "results" / "logs" / "phase4",
+            PROJECT_ROOT / "results" / "archive" / "tensorboard",
+        ]
+    )
+    tag_fragment = safe_tag(tag, "run")
+    for base in candidate_bases:
+        for candidate in (base, base / tag_fragment, base / tag):
+            resolved = candidate.resolve(strict=False)
+            if resolved in attempted:
+                continue
+            attempted.append(resolved)
+            if resolved.exists():
+                roots.append(resolved)
+    return roots, attempted
+
+
 def read_tensorboard_runs(
     log_dir: Path,
     scalar: str,
     tag: str,
     env_id: str,
-) -> list[tuple[np.ndarray, np.ndarray]]:
-    event_files = list(log_dir.rglob("events.out.tfevents.*"))
+) -> tuple[list[tuple[np.ndarray, np.ndarray]], list[Path]]:
+    roots, attempted = tensorboard_search_roots(log_dir, tag)
+    event_files: list[Path] = []
+    for root in roots:
+        event_files.extend(root.rglob("events.out.tfevents.*"))
     env_fragment = safe_tag(env_id, "environment").lower()
     tag_fragment = tag.lower()
     event_files = [
         path
         for path in event_files
-        if env_fragment in str(path).lower() and tag_fragment in str(path).lower()
+        if tag_fragment in str(path).lower()
+        and (env_fragment in str(path).lower() or "results\\logs\\phase4" in str(path).lower() or "results/logs/phase4" in str(path).lower())
     ]
     if not event_files:
-        return []
+        return [], attempted
 
     try:
         from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
     except ImportError:
-        return []
+        return [], attempted
 
     grouped: dict[Path, list[tuple[int, float]]] = defaultdict(list)
     for event_file in event_files:
@@ -91,7 +130,7 @@ def read_tensorboard_runs(
         steps = np.asarray(sorted(dedup), dtype=float)
         values = np.asarray([dedup[int(step)] for step in steps], dtype=float)
         runs.append((steps, values))
-    return runs
+    return runs, attempted
 
 
 def aggregate_runs(runs: list[tuple[np.ndarray, np.ndarray]]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -113,11 +152,15 @@ def aggregate_runs(runs: list[tuple[np.ndarray, np.ndarray]]) -> tuple[np.ndarra
     return np.asarray(common_steps, dtype=float), values_matrix.mean(axis=0), values_matrix.std(axis=0)
 
 
-def archived_stats_paths(results_dir: Path, env_id: str, tag: str) -> list[Path]:
-    env_dir = results_dir / "archive" / safe_tag(env_id, "environment")
-    if not env_dir.exists():
-        return []
-    return sorted(env_dir.glob(f"stats_*{safe_tag(tag, 'run')}*.json"))
+def archived_stats_paths(results_dir: Path, env_id: str, tag: str) -> tuple[list[Path], list[Path]]:
+    attempted: list[Path] = []
+    matches: list[Path] = []
+    for base in resolve_input_path(results_dir):
+        env_dir = base / "archive" / safe_tag(env_id, "environment")
+        attempted.append(env_dir.resolve(strict=False))
+        if env_dir.exists():
+            matches.extend(sorted(env_dir.glob(f"stats_*{safe_tag(tag, 'run')}*.json")))
+    return matches, attempted
 
 
 def read_stats_series(
@@ -125,9 +168,10 @@ def read_stats_series(
     env_id: str,
     tag: str,
     field: str,
-) -> list[tuple[np.ndarray, np.ndarray]]:
+) -> tuple[list[tuple[np.ndarray, np.ndarray]], list[Path]]:
     runs: list[tuple[np.ndarray, np.ndarray]] = []
-    for path in archived_stats_paths(results_dir, env_id, tag):
+    paths, attempted = archived_stats_paths(results_dir, env_id, tag)
+    for path in paths:
         stats = json.loads(path.read_text(encoding="utf-8-sig"))
         summaries = stats.get("episodes_summary", [])
         if not summaries:
@@ -137,7 +181,7 @@ def read_stats_series(
         mask = np.isfinite(values)
         if np.any(mask):
             runs.append((steps[mask], values[mask]))
-    return runs
+    return runs, attempted
 
 
 def gaussian_moment_accountant_curve(
@@ -157,29 +201,31 @@ def gaussian_moment_accountant_curve(
 def load_return_curve(
     args: argparse.Namespace,
     epsilon: float,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+) -> tuple[tuple[np.ndarray, np.ndarray, np.ndarray] | None, list[Path]]:
     tag = tag_for_epsilon(args.tag_template, epsilon)
-    runs = read_tensorboard_runs(args.log_dir, args.return_scalar, tag, args.env_id)
+    runs, attempted = read_tensorboard_runs(args.log_dir, args.return_scalar, tag, args.env_id)
     if not runs:
-        runs = read_stats_series(args.results_dir, args.env_id, tag, "return")
+        runs, stats_attempted = read_stats_series(args.results_dir, args.env_id, tag, "return")
+        attempted.extend(stats_attempted)
     if not runs:
-        return None
-    return aggregate_runs(runs)
+        return None, attempted
+    return aggregate_runs(runs), attempted
 
 
 def load_privacy_curve(
     args: argparse.Namespace,
     epsilon: float,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[tuple[np.ndarray, np.ndarray, np.ndarray], list[Path]]:
     tag = tag_for_epsilon(args.tag_template, epsilon)
-    runs = read_tensorboard_runs(args.log_dir, args.privacy_scalar, tag, args.env_id)
+    runs, attempted = read_tensorboard_runs(args.log_dir, args.privacy_scalar, tag, args.env_id)
     if not runs:
-        runs = read_stats_series(args.results_dir, args.env_id, tag, "epsilon_spent")
+        runs, stats_attempted = read_stats_series(args.results_dir, args.env_id, tag, "epsilon_spent")
+        attempted.extend(stats_attempted)
     if runs:
-        return aggregate_runs(runs)
+        return aggregate_runs(runs), attempted
     episodes = args.episodes or 200
     steps, spent = gaussian_moment_accountant_curve(epsilon, episodes, args.delta)
-    return steps, spent, np.zeros_like(spent)
+    return (steps, spent, np.zeros_like(spent)), attempted
 
 
 def plot_epsilon_sensitivity(
@@ -236,15 +282,22 @@ def main() -> None:
 
     return_curves: dict[float, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
     privacy_curves: dict[float, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+    attempted_paths: list[Path] = []
     for epsilon in args.epsilons:
-        return_curve = load_return_curve(args, epsilon)
+        return_curve, return_attempted = load_return_curve(args, epsilon)
+        attempted_paths.extend(return_attempted)
         if return_curve is not None:
             return_curves[epsilon] = return_curve
-        privacy_curves[epsilon] = load_privacy_curve(args, epsilon)
+        privacy_curve, privacy_attempted = load_privacy_curve(args, epsilon)
+        attempted_paths.extend(privacy_attempted)
+        privacy_curves[epsilon] = privacy_curve
 
     if not return_curves:
+        unique_attempts = "\n".join(f"- {path}" for path in dict.fromkeys(attempted_paths))
         raise FileNotFoundError(
-            "No return curves were found. Run the Phase 4 HalfCheetah epsilon ablation first.",
+            "No return curves were found. The analyser attempted these TensorBoard paths:\n"
+            f"{unique_attempts}\n"
+            "Run the Phase 4 HalfCheetah epsilon ablation first, or pass --log-dir with an absolute path.",
         )
 
     sensitivity_path = output_dir / f"epsilon_sensitivity_{safe_tag(args.env_id, 'environment')}_{stamp}.png"
