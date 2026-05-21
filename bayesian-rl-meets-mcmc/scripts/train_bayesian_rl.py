@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -248,6 +249,7 @@ def main() -> None:
     hyper_sample = hyper_sampler.sample()
 
     writer_logdir = tensorboard_logdir(args, experiment_id, env_folder)
+    os.makedirs(writer_logdir, exist_ok=True)
     writer = SummaryWriter(writer_logdir)
     latest_metrics: dict[str, torch.Tensor] | None = None
     episode_summaries: list[dict[str, float]] = []
@@ -341,6 +343,7 @@ def main() -> None:
     env.close()
 
     stats_path = archive_path / f"stats_{experiment_id}.json"
+    os.makedirs(stats_path.parent, exist_ok=True)
     stats = {
         "experiment": f"bayesian-vac-sgld-mujoco-{args.phase}",
         "experiment_id": experiment_id,

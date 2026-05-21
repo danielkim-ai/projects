@@ -130,15 +130,34 @@ The cumulative privacy cost is logged as `privacy/epsilon_spent`, with the targe
 For a HalfCheetah-v4 epsilon sensitivity ablation, run the same privacy-enabled training protocol at three privacy strengths and then generate the analysis figures:
 
 ```bash
+# Step 1: strong privacy, larger expected utility cost.
 !python scripts/train_bayesian_rl.py --env-id HalfCheetah-v4 --episodes 50 --phase phase4 --tag halfcheetah_privacy_eps1 --privacy true --epsilon 1.0
+
+# Step 2: moderate privacy baseline.
 !python scripts/train_bayesian_rl.py --env-id HalfCheetah-v4 --episodes 50 --phase phase4 --tag halfcheetah_privacy_eps4 --privacy true --epsilon 4.0
+
+# Step 3: weaker privacy, smaller expected utility cost.
 !python scripts/train_bayesian_rl.py --env-id HalfCheetah-v4 --episodes 50 --phase phase4 --tag halfcheetah_privacy_eps16 --privacy true --epsilon 16.0
+
+# Step 4: analyse epsilon sensitivity and privacy loss.
 !python scripts/analyse_privacy.py --env-id HalfCheetah-v4 --epsilons 1.0 4.0 16.0
 ```
 
 Phase 4 TensorBoard logs are written to `results/logs/phase4/{tag}/`, for example `results/logs/phase4/halfcheetah_privacy_eps4/`. The analyser supports absolute paths and paths relative to either the shell working directory or the project root via `--log-dir`.
 
 The analysis script writes `epsilon_sensitivity_*.png` and `privacy_loss_*.png` to `results/plots/phase4/analysis/`, alongside `latest_epsilon_sensitivity.png` and `latest_privacy_loss.png` for report automation.
+
+### Troubleshooting Phase 4 Paths
+
+If the analyser cannot find TensorBoard logs, first inspect the folders under `results/logs/phase4/`. The analyser uses fuzzy matching, so tags such as `halfcheetah_privacy_eps4`, `HalfCheetah_epsilon4_seed7`, or `privacy_eps4_halfcheetah` are all acceptable provided the environment and epsilon cues are present.
+
+When running from a different working directory, pass the log root explicitly:
+
+```bash
+!python scripts/analyse_privacy.py --env-id HalfCheetah-v4 --epsilons 1.0 4.0 16.0 --log-dir /absolute/path/to/results/logs/phase4
+```
+
+If no matching data are found, the analyser prints both the paths it attempted and the existing folders below the searched log roots.
 
 For Google Colab, mount Google Drive, create the working notebook directory if needed, clone the repository there, and move into the actual project directory before installing dependencies:
 

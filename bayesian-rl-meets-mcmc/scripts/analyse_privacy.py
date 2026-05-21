@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
+import re
 import shutil
 import sys
 from collections import defaultdict
@@ -49,6 +51,35 @@ def tag_for_epsilon(template: str, epsilon: float) -> str:
     return template.format(epsilon=epsilon)
 
 
+def normalise_match_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+def epsilon_tokens(epsilon: float) -> set[str]:
+    raw = f"{epsilon:g}"
+    decimal = f"{epsilon:.1f}"
+    values = {raw, decimal, raw.replace(".", ""), decimal.replace(".", "")}
+    tokens: set[str] = set()
+    for value in values:
+        tokens.update(
+            {
+                normalise_match_text(f"eps{value}"),
+                normalise_match_text(f"epsilon{value}"),
+                normalise_match_text(f"e{value}"),
+            }
+        )
+    return tokens
+
+
+def environment_tokens(env_id: str) -> set[str]:
+    safe_env = safe_tag(env_id, "environment")
+    first = safe_env.split("-")[0]
+    return {
+        normalise_match_text(safe_env),
+        normalise_match_text(first),
+    }
+
+
 def resolve_input_path(path: Path) -> list[Path]:
     """Support absolute paths and paths relative to cwd or the project root."""
 
@@ -60,8 +91,38 @@ def resolve_input_path(path: Path) -> list[Path]:
     ]
 
 
-def tensorboard_search_roots(log_dir: Path, tag: str) -> tuple[list[Path], list[Path]]:
-    """Return existing TensorBoard roots and every path attempted."""
+def list_existing_directories(bases: list[Path]) -> list[Path]:
+    """Return directories below the candidate bases for debugging."""
+
+    directories: list[Path] = []
+    for base in bases:
+        if not base.exists():
+            continue
+        for root, dirnames, _ in os.walk(base):
+            root_path = Path(root).resolve(strict=False)
+            directories.append(root_path)
+            for dirname in dirnames:
+                directories.append((root_path / dirname).resolve(strict=False))
+    return sorted(dict.fromkeys(directories))
+
+
+def fuzzy_matches_phase4(candidate: Path, env_id: str, epsilon: float, tag: str) -> bool:
+    """Return whether a Phase 4 folder plausibly belongs to the requested ablation."""
+
+    text = normalise_match_text(str(candidate))
+    tag_text = normalise_match_text(tag)
+    has_epsilon = any(token in text for token in epsilon_tokens(epsilon))
+    has_environment = any(token in text for token in environment_tokens(env_id))
+    return tag_text in text or (has_environment and has_epsilon)
+
+
+def tensorboard_search_roots(
+    log_dir: Path,
+    tag: str,
+    env_id: str,
+    epsilon: float,
+) -> tuple[list[Path], list[Path], list[Path]]:
+    """Return TensorBoard roots, attempted paths, and existing Phase 4 folders."""
 
     attempted: list[Path] = []
     roots: list[Path] = []
@@ -72,6 +133,7 @@ def tensorboard_search_roots(log_dir: Path, tag: str) -> tuple[list[Path], list[
             PROJECT_ROOT / "results" / "archive" / "tensorboard",
         ]
     )
+    candidate_bases = list(dict.fromkeys(base.resolve(strict=False) for base in candidate_bases))
     tag_fragment = safe_tag(tag, "run")
     for base in candidate_bases:
         for candidate in (base, base / tag_fragment, base / tag):
@@ -81,7 +143,11 @@ def tensorboard_search_roots(log_dir: Path, tag: str) -> tuple[list[Path], list[
             attempted.append(resolved)
             if resolved.exists():
                 roots.append(resolved)
-    return roots, attempted
+    existing_directories = list_existing_directories(candidate_bases)
+    for directory in existing_directories:
+        if fuzzy_matches_phase4(directory, env_id, epsilon, tag):
+            roots.append(directory)
+    return sorted(dict.fromkeys(roots)), attempted, existing_directories
 
 
 def read_tensorboard_runs(
@@ -89,26 +155,24 @@ def read_tensorboard_runs(
     scalar: str,
     tag: str,
     env_id: str,
-) -> tuple[list[tuple[np.ndarray, np.ndarray]], list[Path]]:
-    roots, attempted = tensorboard_search_roots(log_dir, tag)
+    epsilon: float,
+) -> tuple[list[tuple[np.ndarray, np.ndarray]], list[Path], list[Path]]:
+    roots, attempted, existing_directories = tensorboard_search_roots(log_dir, tag, env_id, epsilon)
     event_files: list[Path] = []
     for root in roots:
         event_files.extend(root.rglob("events.out.tfevents.*"))
-    env_fragment = safe_tag(env_id, "environment").lower()
-    tag_fragment = tag.lower()
     event_files = [
         path
         for path in event_files
-        if tag_fragment in str(path).lower()
-        and (env_fragment in str(path).lower() or "results\\logs\\phase4" in str(path).lower() or "results/logs/phase4" in str(path).lower())
+        if fuzzy_matches_phase4(path.parent, env_id, epsilon, tag)
     ]
     if not event_files:
-        return [], attempted
+        return [], attempted, existing_directories
 
     try:
         from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
     except ImportError:
-        return [], attempted
+        return [], attempted, existing_directories
 
     grouped: dict[Path, list[tuple[int, float]]] = defaultdict(list)
     for event_file in event_files:
@@ -130,7 +194,7 @@ def read_tensorboard_runs(
         steps = np.asarray(sorted(dedup), dtype=float)
         values = np.asarray([dedup[int(step)] for step in steps], dtype=float)
         runs.append((steps, values))
-    return runs, attempted
+    return runs, attempted, existing_directories
 
 
 def aggregate_runs(runs: list[tuple[np.ndarray, np.ndarray]]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -201,31 +265,43 @@ def gaussian_moment_accountant_curve(
 def load_return_curve(
     args: argparse.Namespace,
     epsilon: float,
-) -> tuple[tuple[np.ndarray, np.ndarray, np.ndarray] | None, list[Path]]:
+) -> tuple[tuple[np.ndarray, np.ndarray, np.ndarray] | None, list[Path], list[Path]]:
     tag = tag_for_epsilon(args.tag_template, epsilon)
-    runs, attempted = read_tensorboard_runs(args.log_dir, args.return_scalar, tag, args.env_id)
+    runs, attempted, existing_dirs = read_tensorboard_runs(
+        args.log_dir,
+        args.return_scalar,
+        tag,
+        args.env_id,
+        epsilon,
+    )
     if not runs:
         runs, stats_attempted = read_stats_series(args.results_dir, args.env_id, tag, "return")
         attempted.extend(stats_attempted)
     if not runs:
-        return None, attempted
-    return aggregate_runs(runs), attempted
+        return None, attempted, existing_dirs
+    return aggregate_runs(runs), attempted, existing_dirs
 
 
 def load_privacy_curve(
     args: argparse.Namespace,
     epsilon: float,
-) -> tuple[tuple[np.ndarray, np.ndarray, np.ndarray], list[Path]]:
+) -> tuple[tuple[np.ndarray, np.ndarray, np.ndarray], list[Path], list[Path]]:
     tag = tag_for_epsilon(args.tag_template, epsilon)
-    runs, attempted = read_tensorboard_runs(args.log_dir, args.privacy_scalar, tag, args.env_id)
+    runs, attempted, existing_dirs = read_tensorboard_runs(
+        args.log_dir,
+        args.privacy_scalar,
+        tag,
+        args.env_id,
+        epsilon,
+    )
     if not runs:
         runs, stats_attempted = read_stats_series(args.results_dir, args.env_id, tag, "epsilon_spent")
         attempted.extend(stats_attempted)
     if runs:
-        return aggregate_runs(runs), attempted
+        return aggregate_runs(runs), attempted, existing_dirs
     episodes = args.episodes or 200
     steps, spent = gaussian_moment_accountant_curve(epsilon, episodes, args.delta)
-    return (steps, spent, np.zeros_like(spent)), attempted
+    return (steps, spent, np.zeros_like(spent)), attempted, existing_dirs
 
 
 def plot_epsilon_sensitivity(
@@ -283,20 +359,27 @@ def main() -> None:
     return_curves: dict[float, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
     privacy_curves: dict[float, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
     attempted_paths: list[Path] = []
+    existing_directories: list[Path] = []
     for epsilon in args.epsilons:
-        return_curve, return_attempted = load_return_curve(args, epsilon)
+        return_curve, return_attempted, return_dirs = load_return_curve(args, epsilon)
         attempted_paths.extend(return_attempted)
+        existing_directories.extend(return_dirs)
         if return_curve is not None:
             return_curves[epsilon] = return_curve
-        privacy_curve, privacy_attempted = load_privacy_curve(args, epsilon)
+        privacy_curve, privacy_attempted, privacy_dirs = load_privacy_curve(args, epsilon)
         attempted_paths.extend(privacy_attempted)
+        existing_directories.extend(privacy_dirs)
         privacy_curves[epsilon] = privacy_curve
 
     if not return_curves:
         unique_attempts = "\n".join(f"- {path}" for path in dict.fromkeys(attempted_paths))
+        existing = "\n".join(f"- {path}" for path in dict.fromkeys(existing_directories))
+        existing_message = existing or "- No folders currently exist below the searched log roots."
         raise FileNotFoundError(
             "No return curves were found. The analyser attempted these TensorBoard paths:\n"
             f"{unique_attempts}\n"
+            "Existing folders below the searched log roots:\n"
+            f"{existing_message}\n"
             "Run the Phase 4 HalfCheetah epsilon ablation first, or pass --log-dir with an absolute path.",
         )
 
