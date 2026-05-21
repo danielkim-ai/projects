@@ -83,9 +83,11 @@ To launch the MuJoCo training path with TensorBoard logging:
 
 ```bash
 cd bayesian-rl-meets-mcmc
-python scripts/train_bayesian_rl.py --env-id HalfCheetah-v4 --save-tag halfcheetah_phase2
+python scripts/train_bayesian_rl.py --env-id HalfCheetah-v4 --episodes 50 --save-tag halfcheetah_phase2
 tensorboard --logdir results/archive/tensorboard
 ```
+
+Note: Always specify `--env-id` to ensure environment-specific optimisation.
 
 When `--episodes` is omitted, Phase 2 uses environment-aware diagnostic defaults: Hopper `80`, Ant `150`, HalfCheetah `50`, and Humanoid `200`. Environment-specific stats are archived under `results/archive/{env_id}/`.
 
@@ -99,7 +101,7 @@ python scripts/visualize_logs.py --phase phase2 --tag halfcheetah_phase2 --env-i
 For Phase 3 hyperparameter posterior estimation:
 
 ```bash
-python scripts/train_bayesian_rl.py --phase phase3 --tag hyper_study --sample_hypers true
+python scripts/train_bayesian_rl.py --env-id HalfCheetah-v4 --episodes 200 --phase phase3 --tag hyper_study --sample_hypers true
 python scripts/visualize_logs.py --phase phase3 --tag hyper_study
 ```
 
