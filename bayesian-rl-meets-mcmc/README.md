@@ -149,31 +149,35 @@ The analysis script writes `epsilon_sensitivity_*.png` and `privacy_loss_*.png` 
 
 ## Experimental Results Gallery
 
-The repository archives plot artefacts under `results/plots/{phase}/` using filenames of the form `{phase}_{env_id}_{tag}_{timestamp}_{descriptor}.png`. The current local archive contains the Phase 1 diagnostic comparison below; Phase 3 posterior and Phase 4 privacy figures should be added to the same tree after the completed benchmark plots are exported from the experiment machines.
+The repository archives plot artefacts under `results/plots/{phase}/` using the official `{phase}_{env_id}_{type}.png` naming convention.
 
 ### Phase 1 Diagnostic
 
-![Phase 1 HalfCheetah diagnostic comparison](results/plots/phase1/seed7_20260521_032126/phase1_HalfCheetah-v4_seed7_20260521_032126_comparison_return.png)
+![Phase 1 HalfCheetah diagnostic comparison](results/plots/phase1/phase1_halfcheetahv4_diagnostic.png)
 
 ### Phase 3 Posterior Estimation
 
-| Environment | Expected gallery location |
-| --- | --- |
-| HalfCheetah-v4 | `results/plots/phase3/HalfCheetah-v4/` |
-| Ant-v4 | `results/plots/phase3/Ant-v4/` |
-| Hopper-v4 | `results/plots/phase3/Hopper-v4/` |
-| Humanoid-v4 | `results/plots/phase3/Humanoid-v4/` |
+| Environment | Posterior | Performance |
+| --- | --- | --- |
+| HalfCheetah-v4 | ![Phase 3 HalfCheetah posterior](results/plots/phase3/phase3_halfcheetahv4_posterior.png) | ![Phase 3 HalfCheetah performance](results/plots/phase3/phase3_halfcheetahv4_performance.png) |
+| Ant-v4 | ![Phase 3 Ant posterior](results/plots/phase3/phase3_antv4_posterior.png) | ![Phase 3 Ant performance](results/plots/phase3/phase3_antv4_performance.png) |
+| Hopper-v4 | ![Phase 3 Hopper posterior](results/plots/phase3/phase3_hopperv4_posterior.png) | ![Phase 3 Hopper performance](results/plots/phase3/phase3_hopperv4_performance.png) |
+| Humanoid-v4 | ![Phase 3 Humanoid posterior](results/plots/phase3/phase3_humanoidv4_posterior.png) | ![Phase 3 Humanoid performance](results/plots/phase3/phase3_humanoidv4_performance.png) |
 
 ### Differential Privacy Analysis
 
-| Environment | Expected gallery location |
-| --- | --- |
-| HalfCheetah-v4 | `results/plots/phase4/analysis/` |
-| Ant-v4 | `results/plots/phase4/Ant-v4/` |
-| Hopper-v4 | `results/plots/phase4/Hopper-v4/` |
-| Humanoid-v4 | `results/plots/phase4/Humanoid-v4/` |
+| Environment | Epsilon Sensitivity | Privacy Budget Consumption |
+| --- | --- | --- |
+| HalfCheetah-v4 | ![Phase 4 HalfCheetah epsilon sensitivity](results/plots/phase4/analysis/phase4_halfcheetahv4_epsilon_sensitivity.png) | ![Phase 4 HalfCheetah privacy budget](results/plots/phase4/analysis/phase4_halfcheetahv4_privacy_budget.png) |
 
-The epsilon sensitivity and privacy budget consumption figures are written by `scripts/analyse_privacy.py` as `phase4_{env_id}_privacy_analysis_{timestamp}_epsilon_sensitivity.png` and `phase4_{env_id}_privacy_analysis_{timestamp}_privacy_loss.png`.
+### Phase 4 Privacy-Preserving Performance
+
+| Environment | Posterior | Performance |
+| --- | --- | --- |
+| HalfCheetah-v4 | ![Phase 4 HalfCheetah posterior](results/plots/phase4/phase4_halfcheetahv4_posterior.png) | ![Phase 4 HalfCheetah performance](results/plots/phase4/phase4_halfcheetahv4_performance.png) |
+| Ant-v4 | ![Phase 4 Ant posterior](results/plots/phase4/phase4_antv4_posterior.png) | ![Phase 4 Ant performance](results/plots/phase4/phase4_antv4_performance.png) |
+| Hopper-v4 | ![Phase 4 Hopper posterior](results/plots/phase4/phase4_hopperv4_posterior.png) | ![Phase 4 Hopper performance](results/plots/phase4/phase4_hopperv4_performance.png) |
+| Humanoid-v4 | ![Phase 4 Humanoid posterior](results/plots/phase4/phase4_humanoidv4_posterior.png) | ![Phase 4 Humanoid performance](results/plots/phase4/phase4_humanoidv4_performance.png) |
 
 ### Troubleshooting Phase 4 Paths
 

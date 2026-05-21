@@ -38,14 +38,13 @@ def timestamp() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
-def plot_filename(phase: str, env_id: str | None, tag: str, stamp: str, descriptor: str) -> str:
-    """Create an archive-safe plot filename with phase, environment, tag, and time."""
+def plot_filename(phase: str, env_id: str | None, descriptor: str) -> str:
+    """Create an official plot filename with phase, environment, and result type."""
 
-    phase_name = safe_tag(phase, "phase")
-    env_name = safe_tag(env_id or "all-envs", "environment")
-    tag_name = safe_tag(tag, "run")
-    descriptor_name = safe_tag(descriptor, "plot")
-    return f"{phase_name}_{env_name}_{tag_name}_{stamp}_{descriptor_name}.png"
+    phase_name = safe_tag(phase, "phase").lower()
+    env_name = safe_tag(env_id or "all-envs", "environment").replace("-", "").lower()
+    descriptor_name = safe_tag(descriptor, "plot").lower()
+    return f"{phase_name}_{env_name}_{descriptor_name}.png"
 
 
 def output_paths(results_dir: Path, phase: str, tag: str, env_id: str | None = None) -> tuple[Path, Path, str]:
@@ -224,8 +223,6 @@ def main() -> None:
     output_path = output_dir / plot_filename(
         args.phase,
         args.env_id,
-        args.tag,
-        stamp,
         "comparison_return",
     )
 
@@ -248,8 +245,6 @@ def main() -> None:
         hyper_path = output_dir / plot_filename(
             args.phase,
             args.env_id,
-            args.tag,
-            stamp,
             "hyperparameter_posterior",
         )
         latest_hyper_path = latest_path.with_name("latest_hyperparameters.png")
