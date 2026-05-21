@@ -32,6 +32,7 @@ from src.result_io import archive_dir, run_id, update_latest_copy  # noqa: E402
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate Low-data MuJoCo Phase 1 report artefacts.")
     parser.add_argument("--episodes", type=int, default=12)
+    parser.add_argument("--env-id", default="HalfCheetah-v4")
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--save-tag", default="phase1_low_data")
     parser.add_argument("--results-dir", type=Path, default=PROJECT_ROOT / "results")
@@ -68,6 +69,7 @@ def main() -> None:
         "experiment": "low-data-mujoco-sgld-phase1",
         "experiment_id": experiment_id,
         "status": "ready_for_real_rollout_integration",
+        "env_id": args.env_id,
         "episodes": int(args.episodes),
         "seed": int(args.seed),
         "metrics": metrics.to_json(),

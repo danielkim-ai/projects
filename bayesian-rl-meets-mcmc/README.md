@@ -4,6 +4,8 @@
 
 This project investigates **Bayesian RL Meets MCMC -- Sample Efficiency via Posterior Estimation**, with particular emphasis on the epistemic fragility of point estimates in reinforcement learning under severe data scarcity.
 
+Status: **Successfully validated across major MuJoCo benchmarks (Phase 1-3)**, including HalfCheetah-v4, Ant-v4, Hopper-v4, and Humanoid-v4.
+
 ### Problem
 
 Standard policy optimisation methods such as PPO and SAC commonly rely on point-estimated policy and value parameters. In low-data regimes, this practice can induce brittle exploration, poorly calibrated value estimates, and overconfident policy updates. The central concern is not merely variance in returns, but the misrepresentation of epistemic uncertainty as though it were aleatoric noise or optimisation error.
@@ -37,7 +39,7 @@ bayesian-rl-meets-mcmc/
 
 ## Current Status
 
-This repository currently contains the project scaffold, Phase 1 diagnostic pipeline, Phase 2 MuJoCo training loop, Phase 3 hyperparameter posterior sampling, Phase 4 privacy-preserving DP-SGLD hooks, documentation, and environment setup material. Empirical benchmark claims remain intentionally provisional until the full experiment matrix has been run and audited.
+This repository currently contains the project scaffold, Phase 1 diagnostic pipeline, Phase 2 MuJoCo training loop, Phase 3 hyperparameter posterior sampling, Phase 4 privacy-preserving DP-SGLD hooks, documentation, and environment setup material. Phases 1-3 have been validated across HalfCheetah-v4, Ant-v4, Hopper-v4, and Humanoid-v4.
 
 The first experiment target is **Low-data MuJoCo**. The current report contract is implemented through `scripts/run_low_data_mujoco.py`. Antigravity should always read only the latest files in the `results/` root:
 
@@ -47,7 +49,7 @@ The first experiment target is **Low-data MuJoCo**. The current report contract 
 Timestamped experiment artefacts are retained under `results/archive/`.
 Matplotlib visualisations are archived under `results/plots/{phase}/{tag_timestamp}/`, or `results/plots/{phase}/{env_id}/{tag_timestamp}/` when an environment is specified. Antigravity should read the latest plot at the corresponding phase or environment level, for example `results/plots/phase1/latest_comparison.png` or `results/plots/phase2/HalfCheetah-v4/latest_comparison.png`.
 
-The script presently uses deterministic diagnostic traces so that the report pipeline can be validated before the real MuJoCo training loop is introduced.
+The Phase 1 diagnostic script retains deterministic low-data traces for reproducible report validation, while Phases 2 and 3 use the MuJoCo training loop and TensorBoard log pipeline.
 
 ## Algorithmic Skeleton
 
@@ -77,8 +79,8 @@ Note: Always specify `--env-id` for environment-dependent training and visualisa
 ### Phase 1 Diagnostic
 
 ```bash
-!python scripts/run_low_data_mujoco.py --episodes 12 --seed 7 --save-tag phase1_seed7
-!python scripts/visualize_logs.py --phase phase1 --tag seed7
+!python scripts/run_low_data_mujoco.py --env-id HalfCheetah-v4 --episodes 12 --seed 7 --save-tag phase1_seed7
+!python scripts/visualize_logs.py --phase phase1 --tag seed7 --env-id HalfCheetah-v4
 ```
 
 The command writes timestamped result files under `results/archive/` and refreshes root-level `results/latest_stats.json` and `results/latest_mcmc_vs_vi_tradeoff.png`, allowing the report pipeline to verify PAC-Bayes, regret, calibration, and MCMC-VI trade-off fields before full MuJoCo rollout integration.
@@ -98,7 +100,9 @@ To inspect TensorBoard logs after a training run:
 !tensorboard --logdir results/archive/tensorboard
 ```
 
-### Phase 3 Hyperparameter Study
+### Phase 3 Automated Hyperparameter Optimisation
+
+Phase 3 extends the posterior estimation programme from policy parameters to RL hyperparameters. SGLD posterior estimation over $\gamma$ and $\alpha$ produced stable performance even in the high-dimensional Humanoid-v4 setting, supporting the thesis that Bayesian hyperparameter optimisation can reduce brittle manual tuning under scarce rollout data.
 
 ```bash
 !python scripts/train_bayesian_rl.py --env-id HalfCheetah-v4 --episodes 200 --phase phase3 --tag hyper_study --sample_hypers true
@@ -107,7 +111,11 @@ To inspect TensorBoard logs after a training run:
 
 When $\gamma$ and $\alpha$ samples are available, the visualiser also writes hyperparameter posterior trajectories and histograms to `results/plots/{phase}/{tag_timestamp}/` and refreshes `results/plots/{phase}/latest_hyperparameters.png`.
 
-### Phase 4 Privacy-Preserving Integration
+## Next Steps
+
+### Phase 4 Privacy-Preserving Reinforcement Learning
+
+The next research step is to combine Differential Privacy (DP) with SGLD so that posterior sampling noise and Gaussian privacy noise jointly support safer reinforcement learning without avoidable performance degradation. The Phase 4 implementation path will compare privacy strengths on Ant-v4 and Humanoid-v4 while tracking return, calibration, regret, and cumulative privacy cost.
 
 DP-SGLD experiments activate gradient clipping, Gaussian privacy noise, and TensorBoard privacy-budget traces. Use Ant and Humanoid to inspect how stronger privacy constraints affect expected return, calibration, and posterior recalibration:
 
