@@ -1,0 +1,39 @@
+\documentclass[conference]{IEEEtran}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\title{Bayesian RL Meets MCMC: Posterior Estimation for Sample-Efficient and Privacy-Preserving Control}
+\author{\IEEEauthorblockN{Research Engineering Brief}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We summarise a four-phase Bayesian reinforcement learning project validated on HalfCheetah-v4, Ant-v4, Hopper-v4, and Humanoid-v4. The method combines variational actor-critic updates with stochastic-gradient MCMC recalibration, hyperparameter posterior estimation, and differential privacy analysis.
+\end{abstract}
+
+\section{Problem}
+Point-estimated reinforcement learning policies are epistemically fragile under data scarcity. In continuous-control domains, overconfident value estimates can induce unstable gradients, poor exploration, and brittle transfer.
+
+\section{Method}
+The variational actor-critic objective is
+\[
+\mathcal{L}(\phi) =
+\mathbb{E}_{q_{\phi}(\theta)}
+\left[\sum_t r_t\right]
+- \beta D_{\mathrm{KL}}\!\left(q_{\phi}(\theta)\,\|\,p(\theta)\right).
+\]
+SGLD periodically recalibrates the variational posterior, while Thompson Sampling executes policies sampled from plausible posterior hypotheses.
+
+\section{Regret Perspective}
+Epsilon-greedy frequentist exploration may suffer linear regret, $O(T)$, when low-data value estimates remain miscalibrated. Bayesian Thompson Sampling instead targets sub-linear Bayesian regret of order $\tilde{O}(\sqrt{dT})$, where $d$ is the effective parameter dimension and $T$ is the interaction horizon.
+
+\section{Empirical Scope}
+Phases 1--4 were validated across HalfCheetah-v4, Ant-v4, Hopper-v4, and Humanoid-v4. Phase 3 confirmed stable hyperparameter posterior estimation, including in Humanoid-v4. Phase 4 added DP-SGLD gradient clipping, Gaussian privacy noise, epsilon sensitivity analysis, and privacy budget consumption plots.
+
+\section{Conclusion}
+The project supports the thesis that posterior estimation can improve sample efficiency, stability, and privacy-aware analysis in reinforcement learning without relying solely on brittle point estimates.
+
+\end{document}

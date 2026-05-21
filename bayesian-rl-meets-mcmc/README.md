@@ -17,11 +17,11 @@ We study a hybrid **MCMC-Variational Inference (VI)** framework for calibrated u
 ### Core Methods
 
 - **MCMC-Augmented Policy Optimisation:** Using SGLD/SGHMC for approximate posterior sampling over policy and critic parameters, thereby replacing single-point updates with posterior-aware optimisation dynamics.
-- **Variational Actor-Critic (VAC):** Marginalising over parameter uncertainty through an evidence lower bound (ELBO), using objectives of the form
+- **Variational Actor-Critic (VAC):** Marginalising over parameter uncertainty through an evidence lower bound (ELBO). The working objective is:
 
 $$\mathcal{L}_{\text{ELBO}}(\phi) = \mathbb{E}_{q_{\phi}(\theta)} \left[ \log p(\mathcal{D} \mid \theta) \right] - \text{KL}(q_{\phi}(\theta) \,\|\, p(\theta))$$
 
-- **Bayesian Hyperparameter Inference:** Treating discount, entropy, and learning-rate parameters such as $\gamma$, $\alpha$, and $\eta$ as random variables rather than fixed constants:
+- **Bayesian Hyperparameter Inference:** Treating discount, entropy, and learning-rate parameters such as $\gamma$, $\alpha$, and $\eta$ as random variables rather than fixed constants. The posterior factorisation used in the project notes is:
 
 $$p(\theta, \gamma, \alpha, \eta \mid \mathcal{D}) \propto p(\mathcal{D} \mid \theta, \gamma, \alpha, \eta) p(\theta) p(\gamma) p(\alpha) p(\eta)$$
 
@@ -54,7 +54,7 @@ The Phase 1 diagnostic script retains deterministic low-data traces for reproduc
 ## Algorithmic Skeleton
 
 - `src/sgld.py`: Stochastic Gradient Langevin Dynamics updates for approximate posterior sampling at SGD-like cost.
-- `src/vac.py`: Mean-field variational actor-critic modules and an ELBO-style objective,
+- `src/vac.py`: Mean-field variational actor-critic modules and the following ELBO-style actor-critic objective:
 
 $$\mathcal{L}(\phi) = \mathbb{E}_{q_{\phi}(\theta)} \left[ \sum_t r_t \right] - \beta \cdot D_{\text{KL}}(q_{\phi}(\theta) \,\|\, p(\theta))$$
 
@@ -147,6 +147,16 @@ Phase 4 TensorBoard logs are written to `results/logs/phase4/{tag}/`, for exampl
 
 The analysis script writes `epsilon_sensitivity_*.png` and `privacy_loss_*.png` to `results/plots/phase4/analysis/`, alongside `latest_epsilon_sensitivity.png` and `latest_privacy_loss.png` for report automation.
 
+## Stability & Regret Analysis
+
+Frequentist exploration schemes such as epsilon-greedy action selection can incur linear regret, written as $O(T)$, when sparse data cause value estimates to remain overconfident or badly calibrated. In low-data continuous-control settings this effect is especially damaging: the policy may repeatedly exploit an early, noisy point estimate and thereby accumulate regret almost proportionally to the training horizon.
+
+The Bayesian alternative used here samples policy and hyperparameter hypotheses from the posterior. Under Thompson Sampling, the policy acts according to plausible models rather than a single brittle estimate. In the standard Bayesian regret framing, this yields sub-linear regret of order $\tilde{O}(\sqrt{dT})$, where $d$ denotes the effective parameter dimension and $T$ the interaction horizon. This is the theoretical reason the MCMC-VI hybrid is treated as a stability mechanism rather than merely a regulariser.
+
+The Phase 2 comparison plot below is used as the repository's stability proxy for this regret argument. It records the expected-return behaviour of the sample-efficiency validation runs before the Phase 3 posterior and Phase 4 privacy extensions.
+
+![Phase 2 HalfCheetah stability and regret comparison](results/plots/phase2/phase2_halfcheetahv4_performance.png)
+
 ## Experimental Results Gallery
 
 The repository archives plot artefacts under `results/plots/{phase}/` using the official `{phase}_{env_id}_{type}.png` naming convention.
@@ -190,6 +200,52 @@ When running from a different working directory, pass the log root explicitly:
 ```
 
 If no matching data are found, the analyser prints both the paths it attempted and the existing folders below the searched log roots.
+
+## Download Technical Brief (LaTeX)
+
+The archived source file is available at `docs/technical_brief.tex`. The following IEEE-style two-column LaTeX source is ready to paste into Overleaf as `main.tex`. It deliberately reports the validated environments and qualitative regret findings without inventing additional numeric claims beyond the archived plots.
+
+```latex
+\documentclass[conference]{IEEEtran}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\title{Bayesian RL Meets MCMC: Posterior Estimation for Sample-Efficient and Privacy-Preserving Control}
+\author{\IEEEauthorblockN{Research Engineering Brief}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We summarise a four-phase Bayesian reinforcement learning project validated on HalfCheetah-v4, Ant-v4, Hopper-v4, and Humanoid-v4. The method combines variational actor-critic updates with stochastic-gradient MCMC recalibration, hyperparameter posterior estimation, and differential privacy analysis.
+\end{abstract}
+
+\section{Problem}
+Point-estimated reinforcement learning policies are epistemically fragile under data scarcity. In continuous-control domains, overconfident value estimates can induce unstable gradients, poor exploration, and brittle transfer.
+
+\section{Method}
+The variational actor-critic objective is
+\[
+\mathcal{L}(\phi) =
+\mathbb{E}_{q_{\phi}(\theta)}
+\left[\sum_t r_t\right]
+- \beta D_{\mathrm{KL}}\!\left(q_{\phi}(\theta)\,\|\,p(\theta)\right).
+\]
+SGLD periodically recalibrates the variational posterior, while Thompson Sampling executes policies sampled from plausible posterior hypotheses.
+
+\section{Regret Perspective}
+Epsilon-greedy frequentist exploration may suffer linear regret, $O(T)$, when low-data value estimates remain miscalibrated. Bayesian Thompson Sampling instead targets sub-linear Bayesian regret of order $\tilde{O}(\sqrt{dT})$, where $d$ is the effective parameter dimension and $T$ is the interaction horizon.
+
+\section{Empirical Scope}
+Phases 1--4 were validated across HalfCheetah-v4, Ant-v4, Hopper-v4, and Humanoid-v4. Phase 3 confirmed stable hyperparameter posterior estimation, including in Humanoid-v4. Phase 4 added DP-SGLD gradient clipping, Gaussian privacy noise, epsilon sensitivity analysis, and privacy budget consumption plots.
+
+\section{Conclusion}
+The project supports the thesis that posterior estimation can improve sample efficiency, stability, and privacy-aware analysis in reinforcement learning without relying solely on brittle point estimates.
+
+\end{document}
+```
 
 For Google Colab, mount Google Drive, create the working notebook directory if needed, clone the repository there, and move into the actual project directory before installing dependencies:
 
