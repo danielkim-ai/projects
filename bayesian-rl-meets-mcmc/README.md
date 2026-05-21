@@ -147,6 +147,34 @@ Phase 4 TensorBoard logs are written to `results/logs/phase4/{tag}/`, for exampl
 
 The analysis script writes `epsilon_sensitivity_*.png` and `privacy_loss_*.png` to `results/plots/phase4/analysis/`, alongside `latest_epsilon_sensitivity.png` and `latest_privacy_loss.png` for report automation.
 
+## Experimental Results Gallery
+
+The repository archives plot artefacts under `results/plots/{phase}/` using filenames of the form `{phase}_{env_id}_{tag}_{timestamp}_{descriptor}.png`. The current local archive contains the Phase 1 diagnostic comparison below; Phase 3 posterior and Phase 4 privacy figures should be added to the same tree after the completed benchmark plots are exported from the experiment machines.
+
+### Phase 1 Diagnostic
+
+![Phase 1 HalfCheetah diagnostic comparison](results/plots/phase1/seed7_20260521_032126/phase1_HalfCheetah-v4_seed7_20260521_032126_comparison_return.png)
+
+### Phase 3 Posterior Estimation
+
+| Environment | Expected gallery location |
+| --- | --- |
+| HalfCheetah-v4 | `results/plots/phase3/HalfCheetah-v4/` |
+| Ant-v4 | `results/plots/phase3/Ant-v4/` |
+| Hopper-v4 | `results/plots/phase3/Hopper-v4/` |
+| Humanoid-v4 | `results/plots/phase3/Humanoid-v4/` |
+
+### Differential Privacy Analysis
+
+| Environment | Expected gallery location |
+| --- | --- |
+| HalfCheetah-v4 | `results/plots/phase4/analysis/` |
+| Ant-v4 | `results/plots/phase4/Ant-v4/` |
+| Hopper-v4 | `results/plots/phase4/Hopper-v4/` |
+| Humanoid-v4 | `results/plots/phase4/Humanoid-v4/` |
+
+The epsilon sensitivity and privacy budget consumption figures are written by `scripts/analyse_privacy.py` as `phase4_{env_id}_privacy_analysis_{timestamp}_epsilon_sensitivity.png` and `phase4_{env_id}_privacy_analysis_{timestamp}_privacy_loss.png`.
+
 ### Troubleshooting Phase 4 Paths
 
 If the analyser cannot find TensorBoard logs, first inspect the folders under `results/logs/phase4/`. The analyser uses fuzzy matching, so tags such as `halfcheetah_privacy_eps4`, `HalfCheetah_epsilon4_seed7`, or `privacy_eps4_halfcheetah` are all acceptable provided the environment and epsilon cues are present.

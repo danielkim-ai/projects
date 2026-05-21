@@ -38,6 +38,16 @@ def timestamp() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
+def plot_filename(phase: str, env_id: str | None, tag: str, stamp: str, descriptor: str) -> str:
+    """Create an archive-safe plot filename with phase, environment, tag, and time."""
+
+    phase_name = safe_tag(phase, "phase")
+    env_name = safe_tag(env_id or "all-envs", "environment")
+    tag_name = safe_tag(tag, "run")
+    descriptor_name = safe_tag(descriptor, "plot")
+    return f"{phase_name}_{env_name}_{tag_name}_{stamp}_{descriptor_name}.png"
+
+
 def output_paths(results_dir: Path, phase: str, tag: str, env_id: str | None = None) -> tuple[Path, Path, str]:
     stamp = timestamp()
     phase_name = safe_tag(phase, "phase")
@@ -211,7 +221,13 @@ def plot_hyperparameters(hypers: dict[str, tuple[np.ndarray, np.ndarray]], outpu
 def main() -> None:
     args = parse_args()
     output_dir, latest_path, stamp = output_paths(args.results_dir, args.phase, args.tag, args.env_id)
-    output_path = output_dir / f"comparison_return_{stamp}.png"
+    output_path = output_dir / plot_filename(
+        args.phase,
+        args.env_id,
+        args.tag,
+        stamp,
+        "comparison_return",
+    )
 
     runs = read_tensorboard_runs(args.log_dir, args.scalar, args.tag, args.env_id)
     source = "tensorboard"
@@ -229,7 +245,13 @@ def main() -> None:
     if not hypers:
         hypers = read_latest_hypers(args.results_dir)
     if hypers:
-        hyper_path = output_dir / f"hyperparameter_posterior_{stamp}.png"
+        hyper_path = output_dir / plot_filename(
+            args.phase,
+            args.env_id,
+            args.tag,
+            stamp,
+            "hyperparameter_posterior",
+        )
         latest_hyper_path = latest_path.with_name("latest_hyperparameters.png")
         plot_hyperparameters(hypers, hyper_path, args.phase)
         shutil.copy2(hyper_path, latest_hyper_path)

@@ -43,6 +43,15 @@ def timestamp() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
+def plot_filename(env_id: str, tag: str, stamp: str, descriptor: str) -> str:
+    """Create an archive-safe Phase 4 privacy analysis filename."""
+
+    env_name = safe_tag(env_id, "environment")
+    tag_name = safe_tag(tag, "privacy_analysis")
+    descriptor_name = safe_tag(descriptor, "plot")
+    return f"phase4_{env_name}_{tag_name}_{stamp}_{descriptor_name}.png"
+
+
 def epsilon_label(epsilon: float) -> str:
     return f"epsilon={epsilon:g}"
 
@@ -383,8 +392,19 @@ def main() -> None:
             "Run the Phase 4 HalfCheetah epsilon ablation first, or pass --log-dir with an absolute path.",
         )
 
-    sensitivity_path = output_dir / f"epsilon_sensitivity_{safe_tag(args.env_id, 'environment')}_{stamp}.png"
-    privacy_path = output_dir / f"privacy_loss_{safe_tag(args.env_id, 'environment')}_{stamp}.png"
+    analysis_tag = "privacy_analysis"
+    sensitivity_path = output_dir / plot_filename(
+        args.env_id,
+        analysis_tag,
+        stamp,
+        "epsilon_sensitivity",
+    )
+    privacy_path = output_dir / plot_filename(
+        args.env_id,
+        analysis_tag,
+        stamp,
+        "privacy_loss",
+    )
     plot_epsilon_sensitivity(return_curves, sensitivity_path, args.env_id)
     plot_privacy_loss(privacy_curves, privacy_path, args.env_id)
 
