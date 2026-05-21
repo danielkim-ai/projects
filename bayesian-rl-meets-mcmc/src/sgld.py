@@ -3,11 +3,82 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
-from math import log
+from dataclasses import dataclass, field
+from math import log, sqrt
 
 import torch
 from torch import nn
+
+
+@dataclass(frozen=True)
+class DifferentialPrivacyConfig:
+    """Gaussian mechanism settings for DP-SGLD experiments."""
+
+    enabled: bool = False
+    epsilon: float = 8.0
+    delta: float = 1.0e-5
+    clip_norm: float = 1.0
+    noise_multiplier: float | None = None
+    composition_steps: int = 1
+
+    def resolved_noise_multiplier(self) -> float:
+        if self.noise_multiplier is not None:
+            return max(self.noise_multiplier, 1.0e-8)
+        steps = max(float(self.composition_steps), 1.0)
+        return sqrt(2.0 * log(1.25 / self.delta)) * sqrt(steps) / max(
+            self.epsilon,
+            1.0e-8,
+        )
+
+
+class PrivacyAccountant:
+    """Conservative Gaussian mechanism privacy-cost tracker.
+
+    This is a lightweight experiment monitor, not a replacement for a formal
+    moments/RDP accountant in production privacy audits.
+    """
+
+    def __init__(self, config: DifferentialPrivacyConfig):
+        self.config = config
+        self.steps = 0
+        self.epsilon_spent = 0.0
+
+    def step(self) -> float:
+        if not self.config.enabled:
+            return self.epsilon_spent
+        self.steps += 1
+        sigma = self.config.resolved_noise_multiplier()
+        per_step = sqrt(2.0 * log(1.25 / self.config.delta)) / sigma
+        self.epsilon_spent = sqrt(self.steps) * per_step
+        return self.epsilon_spent
+
+    def snapshot(self) -> dict[str, float]:
+        return {
+            "privacy_enabled": float(self.config.enabled),
+            "epsilon_spent": float(self.epsilon_spent),
+            "epsilon_target": float(self.config.epsilon),
+            "delta": float(self.config.delta),
+            "dp_steps": float(self.steps),
+            "planned_composition_steps": float(self.config.composition_steps),
+            "noise_multiplier": float(self.config.resolved_noise_multiplier()),
+            "clip_norm": float(self.config.clip_norm),
+        }
+
+
+def apply_dp_gradient_noise(
+    parameters: Iterable[nn.Parameter],
+    config: DifferentialPrivacyConfig,
+) -> float:
+    """Clip gradients and add Gaussian noise for DP-SGLD style updates."""
+
+    params_with_grad = [param for param in parameters if param.grad is not None]
+    if not params_with_grad or not config.enabled:
+        return 0.0
+    total_norm = torch.nn.utils.clip_grad_norm_(params_with_grad, config.clip_norm)
+    noise_std = config.clip_norm * config.resolved_noise_multiplier()
+    for param in params_with_grad:
+        param.grad.add_(torch.randn_like(param.grad) * noise_std)
+    return float(total_norm.detach().cpu())
 
 
 @dataclass(frozen=True)
@@ -21,6 +92,8 @@ class SGLDConfig:
     precondition_decay: float = 0.99
     precondition_eps: float = 1.0e-8
     burn_in_steps: int = 25
+    privacy: DifferentialPrivacyConfig = field(default_factory=DifferentialPrivacyConfig)
+    privacy_accountant: PrivacyAccountant | None = None
 
 
 @dataclass(frozen=True)
@@ -75,7 +148,11 @@ class SGLD:
         """Apply one preconditioned SGLD step."""
 
         params_with_grad = [param for param in self.parameters if param.grad is not None]
-        if self.config.gradient_clip_norm is not None and params_with_grad:
+        if self.config.privacy.enabled:
+            apply_dp_gradient_noise(params_with_grad, self.config.privacy)
+            if self.config.privacy_accountant is not None:
+                self.config.privacy_accountant.step()
+        elif self.config.gradient_clip_norm is not None and params_with_grad:
             torch.nn.utils.clip_grad_norm_(params_with_grad, self.config.gradient_clip_norm)
 
         self.steps += 1

@@ -37,7 +37,7 @@ bayesian-rl-meets-mcmc/
 
 ## Current Status
 
-This repository currently contains the project scaffold, Phase 1 algorithmic skeletons, documentation, and environment setup material. Full MuJoCo rollout collection, production training loops, posterior diagnostics, and empirical benchmark claims are intentionally deferred.
+This repository currently contains the project scaffold, Phase 1 diagnostic pipeline, Phase 2 MuJoCo training loop, Phase 3 hyperparameter posterior sampling, Phase 4 privacy-preserving DP-SGLD hooks, documentation, and environment setup material. Empirical benchmark claims remain intentionally provisional until the full experiment matrix has been run and audited.
 
 The first experiment target is **Low-data MuJoCo**. The current report contract is implemented through `scripts/run_low_data_mujoco.py`. Antigravity should always read only the latest files in the `results/` root:
 
@@ -106,6 +106,18 @@ To inspect TensorBoard logs after a training run:
 ```
 
 When $\gamma$ and $\alpha$ samples are available, the visualiser also writes hyperparameter posterior trajectories and histograms to `results/plots/{phase}/{tag_timestamp}/` and refreshes `results/plots/{phase}/latest_hyperparameters.png`.
+
+### Phase 4 Privacy-Preserving Integration
+
+DP-SGLD experiments activate gradient clipping, Gaussian privacy noise, and TensorBoard privacy-budget traces. Use Ant and Humanoid to inspect how stronger privacy constraints affect expected return, calibration, and posterior recalibration:
+
+```bash
+!python scripts/train_bayesian_rl.py --env-id Ant-v4 --episodes 150 --phase phase4 --tag ant_privacy_eps8 --privacy true --epsilon 8.0
+!python scripts/train_bayesian_rl.py --env-id Humanoid-v4 --episodes 200 --phase phase4 --tag humanoid_privacy_eps4 --privacy true --epsilon 4.0
+!python scripts/visualize_logs.py --phase phase4 --tag ant_privacy_eps8 --env-id Ant-v4
+```
+
+The cumulative privacy cost is logged as `privacy/epsilon_spent`, with the target budget saved in `results/latest_stats.json` under the `privacy` field.
 
 For Google Colab, mount Google Drive, create the working notebook directory if needed, clone the repository there, and move into the actual project directory before installing dependencies:
 

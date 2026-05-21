@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -19,7 +20,13 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.hybrid_recalibration import HybridRecalibrationConfig, HybridRecalibrator  # noqa: E402
 from src.result_io import environment_archive_dir, run_id, safe_tag, update_latest_copy  # noqa: E402
-from src.sgld import HyperparameterPosteriorSampler, SGLDConfig  # noqa: E402
+from src.sgld import (  # noqa: E402
+    DifferentialPrivacyConfig,
+    HyperparameterPosteriorSampler,
+    PrivacyAccountant,
+    SGLDConfig,
+    apply_dp_gradient_noise,
+)
 from src.vac import VACConfig, VariationalActorCritic  # noqa: E402
 
 
@@ -51,6 +58,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--results-dir", type=Path, default=PROJECT_ROOT / "results")
     parser.add_argument("--save-tag", "--tag", dest="save_tag", default="phase2_mujoco")
     parser.add_argument("--sample-hypers", "--sample_hypers", default="false")
+    parser.add_argument("--privacy", default="false")
+    parser.add_argument("--epsilon", type=float, default=8.0)
+    parser.add_argument("--delta", type=float, default=1.0e-5)
+    parser.add_argument("--dp-clip-norm", type=float, default=1.0)
+    parser.add_argument("--dp-noise-multiplier", type=float, default=None)
+    parser.add_argument("--dp-composition-steps", type=int, default=None)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     return parser.parse_args()
@@ -73,6 +86,21 @@ def default_episodes_for_env(env_id: str) -> int:
     if "halfcheetah" in env_key:
         return 50
     return 50
+
+
+def estimate_privacy_composition_steps(
+    episodes: int,
+    vi_epochs: int,
+    recalibrate_every: int,
+) -> int:
+    """Estimate DP update count for VI steps plus scheduled SGLD correction."""
+
+    vi_steps = episodes * vi_epochs
+    recalibration_count = math.ceil(episodes / max(recalibrate_every, 1))
+    sgld_steps = recalibration_count * (
+        HybridRecalibrationConfig.mcmc_steps + HybridRecalibrationConfig.warmup_steps
+    )
+    return max(1, vi_steps + sgld_steps)
 
 
 def scale_action(action: np.ndarray, env: Any) -> np.ndarray:
@@ -156,8 +184,14 @@ def main() -> None:
     np.random.seed(args.seed)
     device = torch.device(args.device)
     sample_hypers = parse_bool(args.sample_hypers)
+    privacy_enabled = parse_bool(args.privacy)
     if args.episodes is None:
         args.episodes = default_episodes_for_env(args.env_id)
+    privacy_composition_steps = args.dp_composition_steps or estimate_privacy_composition_steps(
+        args.episodes,
+        args.vi_epochs,
+        args.recalibrate_every,
+    )
     experiment_id = run_id(args.save_tag, phase=args.phase, seed=args.seed)
     args.results_dir.mkdir(parents=True, exist_ok=True)
     env_folder = safe_tag(args.env_id, "environment")
@@ -177,12 +211,26 @@ def main() -> None:
         )
     ).to(device)
     optimiser = optim.Adam(model.parameters(), lr=args.lr)
+    privacy_config = DifferentialPrivacyConfig(
+        enabled=privacy_enabled,
+        epsilon=args.epsilon,
+        delta=args.delta,
+        clip_norm=args.dp_clip_norm,
+        noise_multiplier=args.dp_noise_multiplier,
+        composition_steps=privacy_composition_steps,
+    )
+    privacy_accountant = PrivacyAccountant(privacy_config)
     recalibrator = HybridRecalibrator(
         model,
         HybridRecalibrationConfig(
             recalibrate_every_episodes=args.recalibrate_every,
             ess_floor=args.ess_floor,
-            sgld=SGLDConfig(step_size=args.lr * 0.1, prior_precision=1.0e-2),
+            sgld=SGLDConfig(
+                step_size=args.lr * 0.1,
+                prior_precision=1.0e-2,
+                privacy=privacy_config,
+                privacy_accountant=privacy_accountant,
+            ),
         ),
     )
     hyper_sampler = HyperparameterPosteriorSampler(
@@ -212,7 +260,11 @@ def main() -> None:
                 entropy_coeff=alpha_value,
             )
             metrics["loss"].backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 10.0)
+            if privacy_enabled:
+                apply_dp_gradient_noise(model.parameters(), privacy_config)
+                privacy_accountant.step()
+            else:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 10.0)
             optimiser.step()
             latest_metrics = metrics
 
@@ -247,6 +299,10 @@ def main() -> None:
         writer.add_scalar("mcmc/ess", ess_value, episode)
         writer.add_scalar("hyperparameter/gamma", gamma_value, episode)
         writer.add_scalar("hyperparameter/alpha", alpha_value, episode)
+        privacy_snapshot = privacy_accountant.snapshot()
+        writer.add_scalar("privacy/epsilon_spent", privacy_snapshot["epsilon_spent"], episode)
+        writer.add_scalar("privacy/epsilon_target", privacy_snapshot["epsilon_target"], episode)
+        writer.add_scalar("privacy/noise_multiplier", privacy_snapshot["noise_multiplier"], episode)
         if sample_hypers:
             hyper_sample = hyper_sampler.update(batch.episode_return, episode)
         episode_summaries.append(
@@ -259,13 +315,17 @@ def main() -> None:
                 "ess": float(ess_value),
                 "gamma": float(gamma_value),
                 "alpha": float(alpha_value),
+                "epsilon_spent": privacy_snapshot["epsilon_spent"],
+                "epsilon_target": privacy_snapshot["epsilon_target"],
+                "privacy_enabled": privacy_snapshot["privacy_enabled"],
             }
         )
 
         print(
             f"episode={episode} return={batch.episode_return:.2f} "
             f"kl={kl_value:.4f} beta={beta_value:.5f} ess={ess_value:.2f} "
-            f"gamma={gamma_value:.4f} alpha={alpha_value:.5f}"
+            f"gamma={gamma_value:.4f} alpha={alpha_value:.5f} "
+            f"privacy_epsilon={privacy_snapshot['epsilon_spent']:.4f}"
         )
 
     writer.close()
@@ -281,6 +341,7 @@ def main() -> None:
         "episodes": args.episodes,
         "rollout_steps": args.rollout_steps,
         "sample_hypers": sample_hypers,
+        "privacy": privacy_accountant.snapshot(),
         "hyperparameter_samples": hyper_sampler.samples,
         "environment_archive": str(archive_path),
         "tensorboard_logdir": str(args.log_dir / env_folder / experiment_id),
