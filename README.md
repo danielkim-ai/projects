@@ -5,6 +5,7 @@ A curated, centralised repository capturing foundational and empirical implement
 ## Core Research Directory
 - `/policy-learning-stability`: Robust policy gradients under non-stationary reward scaling regimes. (Completed)
 - `/bayesian-rl-meets-mcmc`: Bayesian reinforcement learning with MCMC-VI posterior estimation for sample-efficient uncertainty quantification. Phase 1-4 complete, including Privacy-Preserving Analysis and the final Differential Privacy Integration milestone.
+- `/trustworthy-offline-rl-via-dp`: Trajectory-level DP-SGD, privacy-aware offline CQL, LiSSA unlearning, SISA episode shards, and MIA verification for regulated offline RL logs.
 
 ## Experimental Results Gallery
 
