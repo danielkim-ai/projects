@@ -11,7 +11,7 @@ cd projects/trustworthy-offline-rl-via-dp
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "torch>=2.2" "gymnasium>=0.29" "mujoco>=3.1" numpy matplotlib
+python -m pip install -r requirements.txt
 python main.py --steps 8 --episodes 18 --delete-episode 3
 ```
 
@@ -22,7 +22,7 @@ cd projects/trustworthy-offline-rl-via-dp
 conda create -n trustworthy-offline-rl python=3.11 -y
 conda activate trustworthy-offline-rl
 python -m pip install --upgrade pip
-python -m pip install "torch>=2.2" "gymnasium>=0.29" "mujoco>=3.1" numpy matplotlib
+python -m pip install -r requirements.txt
 python main.py --steps 8 --episodes 18 --delete-episode 3
 ```
 
@@ -37,7 +37,7 @@ cd projects\trustworthy-offline-rl-via-dp
 py -3 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-python -m pip install "torch>=2.2" "gymnasium>=0.29" "mujoco>=3.1" numpy matplotlib
+python -m pip install -r requirements.txt
 python main.py --steps 8 --episodes 18 --delete-episode 3
 ```
 
@@ -68,28 +68,31 @@ $env:PYTHONUTF8 = "1"
 Copy this cell into a notebook:
 
 ```python
-%pip install -q "torch>=2.2" "gymnasium>=0.29" "mujoco>=3.1" matplotlib numpy pyvirtualdisplay
-
+# 1. Mount Google Drive and move to the project directory.
 from google.colab import drive
 drive.mount("/content/drive")
 
+%cd /content/drive/MyDrive/trustworthy-offline-rl-via-dp
+
+# 2. Install OS packages and Python dependencies from the unified requirements file.
+!apt-get update -qq && apt-get install -y -qq xvfb
+%pip install -q -r requirements.txt
+
+# 3. Configure encoding, MuJoCo rendering, and virtual display support.
 import os
 os.environ["PYTHONUTF8"] = "1"
 os.environ["MUJOCO_GL"] = "egl"
-
-!apt-get update -qq
-!apt-get install -y -qq xvfb
 
 from pyvirtualdisplay import Display
 display = Display(visible=False, size=(1400, 900))
 display.start()
 
+# 4. Verify hardware acceleration and run the prototype smoke test.
 import torch
-print("CUDA available:", torch.cuda.is_available())
+print("CUDA Device Available:", torch.cuda.is_available())
 if torch.cuda.is_available():
     print("GPU:", torch.cuda.get_device_name(0))
 
-%cd /content/drive/MyDrive/trustworthy-offline-rl-via-dp
 !python main.py --steps 8 --episodes 18 --delete-episode 3
 ```
 
@@ -99,6 +102,7 @@ For a fresh clone inside Colab:
 %cd /content
 !git clone https://github.com/danielkim-ai/projects.git
 %cd /content/projects/trustworthy-offline-rl-via-dp
+%pip install -q -r requirements.txt
 !python main.py --steps 8 --episodes 18 --delete-episode 3
 ```
 
