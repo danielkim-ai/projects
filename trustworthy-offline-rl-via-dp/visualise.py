@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict, dataclass
+import json
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -36,6 +38,60 @@ class DynamicMetrics:
     mia_report: dict[str, object]
     deleted_episode: int
     affected_shards: list[int]
+
+
+def metrics_to_record(metrics: DynamicMetrics) -> dict[str, Any]:
+    return {
+        "steps": metrics.steps,
+        "clip_norms": metrics.clip_norms,
+        "epsilons": metrics.epsilons,
+        "raw_norms": metrics.raw_norms,
+        "clipped_fractions": metrics.clipped_fractions,
+        "before_margins": metrics.before_margins.tolist(),
+        "after_margins": metrics.after_margins.tolist(),
+        "logged_return": {
+            "mean": metrics.logged_return_mean,
+            "std": metrics.logged_return_std,
+        },
+        "proxy_return": {
+            "mean": metrics.proxy_return_mean,
+            "std": metrics.proxy_return_std,
+        },
+        "delta_j": metrics.delta_j,
+        "mia_report": metrics.mia_report,
+        "deleted_episode": metrics.deleted_episode,
+        "affected_shards": metrics.affected_shards,
+    }
+
+
+def metrics_from_record(record: dict[str, Any]) -> DynamicMetrics:
+    return DynamicMetrics(
+        steps=[int(item) for item in record["steps"]],
+        clip_norms=[float(item) for item in record["clip_norms"]],
+        epsilons=[float(item) for item in record["epsilons"]],
+        raw_norms=[float(item) for item in record["raw_norms"]],
+        clipped_fractions=[float(item) for item in record["clipped_fractions"]],
+        before_margins=np.asarray(record["before_margins"], dtype=float),
+        after_margins=np.asarray(record["after_margins"], dtype=float),
+        logged_return_mean=float(record["logged_return"]["mean"]),
+        logged_return_std=float(record["logged_return"]["std"]),
+        proxy_return_mean=float(record["proxy_return"]["mean"]),
+        proxy_return_std=float(record["proxy_return"]["std"]),
+        delta_j=float(record["delta_j"]),
+        mia_report=dict(record["mia_report"]),
+        deleted_episode=int(record["deleted_episode"]),
+        affected_shards=[int(item) for item in record["affected_shards"]],
+    )
+
+
+def write_metrics(metrics: DynamicMetrics, path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(metrics_to_record(metrics), indent=2), encoding="utf-8")
+    return path
+
+
+def read_metrics(path: Path) -> DynamicMetrics:
+    return metrics_from_record(json.loads(path.read_text(encoding="utf-8")))
 
 
 def gaussian_kde(values: np.ndarray, grid: np.ndarray, bandwidth: float | None = None) -> np.ndarray:
@@ -244,13 +300,32 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--shards", type=int, default=6)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--delta", type=float, default=1e-5)
+    parser.add_argument(
+        "--metrics-json",
+        type=Path,
+        default=None,
+        help="Load an existing metrics JSON file instead of running a new simulation.",
+    )
+    parser.add_argument(
+        "--write-metrics",
+        type=Path,
+        default=PLOT_DIR / "latest_visualise_metrics.json",
+        help="Path for the metrics JSON produced by a fresh simulation.",
+    )
     return parser
 
 
 def main() -> None:
     PLOT_DIR.mkdir(parents=True, exist_ok=True)
     args = build_parser().parse_args()
-    metrics = run_dynamic_pipeline(args)
+    if args.metrics_json is not None:
+        metrics = read_metrics(args.metrics_json)
+        metrics_path = args.metrics_json
+        source = "json"
+    else:
+        metrics = run_dynamic_pipeline(args)
+        metrics_path = write_metrics(metrics, args.write_metrics)
+        source = "simulation"
     paths = [
         plot_privacy_utility(metrics),
         plot_unlearning_margin(metrics),
@@ -262,9 +337,11 @@ def main() -> None:
         "final_epsilon": metrics.epsilons[-1],
         "delta_j": metrics.delta_j,
         "mia_report": metrics.mia_report,
+        "metrics_source": source,
+        "metrics_json": str(metrics_path),
     }
     print(f"dynamic_summary={summary}")
-    print(f"return_summary={asdict(metrics)}")
+    print(f"metrics_json={metrics_path}")
     for path in paths:
         print(path)
 

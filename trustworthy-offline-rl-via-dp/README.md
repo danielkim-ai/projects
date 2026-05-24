@@ -95,18 +95,39 @@ For a 16-step multidimensional audit run with dynamic plot generation:
 python visualise.py --steps 16 --episodes 36 --episode-batch-size 8 --shards 6 --delete-episode 11
 ```
 
+The visualizer runs the tensor simulation, writes a reusable metrics log, and renders plots from that data:
+
+```text
+results/plots/latest_visualise_metrics.json
+results/plots/plot_privacy_utility.png
+results/plots/plot_unlearning_margin.png
+results/plots/plot_utility_tradeoff.png
+```
+
+To regenerate figures from a saved experiment log without rerunning training:
+
+```bash
+python visualise.py --metrics-json results/plots/latest_visualise_metrics.json
+```
+
+To write a named metrics log for a sweep:
+
+```bash
+python visualise.py --steps 16 --episodes 36 --write-metrics results/plots/metrics_steps16_episodes36.json
+```
+
 To run the baseline workflow and then regenerate all evaluation figures in sequence:
 
 ```bash
 python main.py --steps 8 --episodes 18 --delete-episode 3 && python visualise.py
 ```
 
-The visualization command writes:
+The dynamic plots summarize:
 
 ```text
-results/plots/plot_privacy_utility.png
-results/plots/plot_unlearning_margin.png
-results/plots/plot_utility_tradeoff.png
+step-wise RDP epsilon and clipping norm
+before/after MIA margin distributions
+logged-return vs DP-policy proxy utility trade-off
 ```
 
 ## Training and Deletion Flow

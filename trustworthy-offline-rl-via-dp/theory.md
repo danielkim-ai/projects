@@ -8,6 +8,12 @@ offline trajectories -> trajectory DP-SGD -> deletion request -> unlearning audi
 
 All display equations are intentionally written as single-line `$$...$$` blocks for Markdown and website parser compatibility. Inline symbols remain inline, and display math is separated from Markdown list syntax.
 
+Parser-safe formatting rules used in this file:
+
+- Display equations are standalone paragraphs with no bullet marker on the same line.
+- Inline math appears only inside normal prose.
+- Covariance notation uses `\text{Cov}` rather than parser-sensitive operator macros.
+
 ## 1. Offline RL Setup and Privacy Tension
 
 Let the offline dataset be a finite population of trajectories.
