@@ -200,7 +200,7 @@ An ensemble policy can average shard policies:
 
 $$\pi_{\text{ens}}(a\mid s)=\frac{1}{K}\sum_{j=1}^{K}\pi_j(a\mid s).$$
 
-A distilled student minimizes divergence to the ensemble:
+A distilled student minimises divergence to the ensemble:
 
 $$\min_\phi\mathbb{E}_{s\sim\mathcal{B}}\left[D\left(\pi_\phi(\cdot\mid s),\pi_{\text{ens}}(\cdot\mid s)\right)\right].$$
 

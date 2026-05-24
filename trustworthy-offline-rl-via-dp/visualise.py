@@ -47,6 +47,7 @@ def _int_list(record: dict[str, Any], key: str) -> list[int]:
 
 
 def metrics_from_record(record: dict[str, Any], source_path: Path) -> ExperimentMetrics:
+    validate_metrics_record(record, source_path)
     logged_return = record["logged_return"]
     proxy_return = record["proxy_return"]
     return ExperimentMetrics(
@@ -67,6 +68,63 @@ def metrics_from_record(record: dict[str, Any], source_path: Path) -> Experiment
         affected_shards=_int_list(record, "affected_shards"),
         source_path=source_path,
     )
+
+
+def validate_metrics_record(record: dict[str, Any], source_path: Path) -> None:
+    required_keys = {
+        "steps",
+        "clip_norms",
+        "epsilons",
+        "raw_norms",
+        "clipped_fractions",
+        "before_margins",
+        "after_margins",
+        "logged_return",
+        "proxy_return",
+        "delta_j",
+        "mia_report",
+        "deleted_episode",
+        "affected_shards",
+    }
+    missing = sorted(required_keys.difference(record))
+    if missing:
+        raise KeyError(f"{source_path} is missing required metrics keys: {missing}")
+
+    step_count = len(record["steps"])
+    for key in ("clip_norms", "epsilons", "raw_norms", "clipped_fractions"):
+        if len(record[key]) != step_count:
+            raise ValueError(
+                f"{source_path} has {len(record[key])} values for {key}, "
+                f"but {step_count} training steps."
+            )
+
+    before = np.asarray(record["before_margins"], dtype=float)
+    after = np.asarray(record["after_margins"], dtype=float)
+    if before.size == 0 or after.size == 0:
+        raise ValueError(f"{source_path} must contain non-empty MIA margin arrays.")
+    if before.shape != after.shape:
+        raise ValueError(
+            f"{source_path} has mismatched margin arrays: "
+            f"before={before.shape}, after={after.shape}."
+        )
+    if not np.isfinite(before).all() or not np.isfinite(after).all():
+        raise ValueError(f"{source_path} contains non-finite MIA margin values.")
+
+    report_distribution = record["mia_report"].get("margin_distribution", {})
+    if report_distribution:
+        report_before = np.asarray(report_distribution.get("before", []), dtype=float)
+        report_after = np.asarray(report_distribution.get("after", []), dtype=float)
+        if report_before.shape != before.shape or not np.allclose(report_before, before):
+            raise ValueError(f"{source_path} has inconsistent before_margins values.")
+        if report_after.shape != after.shape or not np.allclose(report_after, after):
+            raise ValueError(f"{source_path} has inconsistent after_margins values.")
+
+    for block_name in ("logged_return", "proxy_return"):
+        block = record[block_name]
+        for key in ("mean", "std"):
+            value = float(block[key])
+            if not np.isfinite(value):
+                raise ValueError(f"{source_path} has non-finite {block_name}.{key}.")
 
 
 def read_metrics(path: Path) -> ExperimentMetrics:
