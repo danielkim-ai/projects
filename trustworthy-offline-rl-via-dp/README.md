@@ -81,6 +81,34 @@ To simulate a stronger deletion workload:
 python main.py --steps 16 --episodes 36 --episode-batch-size 8 --shards 6 --delete-episode 11
 ```
 
+### Smoke Test and Dynamic Visualization
+
+Use the compact smoke test to verify the core contract quickly:
+
+```bash
+python main.py --steps 8 --episodes 18 --delete-episode 3
+```
+
+For a 16-step multidimensional audit run with dynamic plot generation:
+
+```bash
+python visualise.py --steps 16 --episodes 36 --episode-batch-size 8 --shards 6 --delete-episode 11
+```
+
+To run the baseline workflow and then regenerate all evaluation figures in sequence:
+
+```bash
+python main.py --steps 8 --episodes 18 --delete-episode 3 && python visualise.py
+```
+
+The visualization command writes:
+
+```text
+results/plots/plot_privacy_utility.png
+results/plots/plot_unlearning_margin.png
+results/plots/plot_utility_tradeoff.png
+```
+
 ## Training and Deletion Flow
 
 1. Offline episodes are generated or loaded as `EpisodeBatch` objects.
