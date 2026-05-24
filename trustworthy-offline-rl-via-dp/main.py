@@ -33,6 +33,7 @@ def train_dp_cql(
     steps: int,
     episode_batch_size: int,
     seed: int,
+    noise_multiplier: float,
 ) -> tuple[TrajectoryDPSGD, PrivacyAuditor, list[DPStepStats], list[float]]:
     generator = seed_everything(seed)
     optimizer = TrajectoryDPSGD(
@@ -43,7 +44,7 @@ def train_dp_cql(
             early_norm=1.3,
             late_norm=0.8,
         ),
-        noise_multiplier=0.65,
+        noise_multiplier=noise_multiplier,
         sampling_rate=min(episode_batch_size / max(len(dataset), 1), 1.0),
     )
     auditor = PrivacyAuditor(
@@ -137,6 +138,8 @@ def write_visualise_metrics(
             "delete_episode": args.delete_episode,
             "shards": args.shards,
             "seed": args.seed,
+            "noise_multiplier": args.noise_multiplier,
+            "write_metrics": str(args.write_metrics),
         },
         "steps": list(range(len(step_stats))),
         "clip_norms": [stats.clip_norm for stats in step_stats],
@@ -187,6 +190,7 @@ def run_demo(args: argparse.Namespace) -> None:
         steps=args.steps,
         episode_batch_size=args.episode_batch_size,
         seed=args.seed + 1,
+        noise_multiplier=args.noise_multiplier,
     )
     deleted = dataset.get_episode(args.delete_episode % len(dataset))
     retained_dataset = dataset.without_episode(deleted.episode_id)
@@ -217,7 +221,7 @@ def run_demo(args: argparse.Namespace) -> None:
         "delta_j": UtilityEvaluator.delta_j(logged_return, proxy_return),
     }
     metrics_path = write_visualise_metrics(
-        METRICS_PATH,
+        args.write_metrics,
         args=args,
         step_stats=step_stats,
         epsilons=epsilons,
@@ -249,6 +253,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--delete-episode", type=int, default=3)
     parser.add_argument("--shards", type=int, default=3)
     parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument("--noise-multiplier", type=float, default=0.65)
+    parser.add_argument("--write-metrics", type=Path, default=METRICS_PATH)
     return parser
 
 
