@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import json
 from dataclasses import asdict
-from typing import Sequence
+from pathlib import Path
+from typing import Any, Sequence
 
 import torch
 from torch import Tensor
@@ -10,9 +12,12 @@ from torch import Tensor
 from datasets import SISAShardIndex, TrajectoryDataLoader, TrajectoryDataset
 from evaluation import MIAAnalyzer, PrivacyAuditor, UtilityEvaluator
 from models import PrivacyAwareCQL
-from optimizer import PhaseClipNormSchedule, TrajectoryDPSGD
+from optimizer import DPStepStats, PhaseClipNormSchedule, TrajectoryDPSGD
 from unlearning import GaussianUpdateNoise, LiSSAInfluenceUnlearner
 from utils import EpisodeBatch, seed_everything
+
+
+METRICS_PATH = Path("results") / "plots" / "latest_visualise_metrics.json"
 
 
 def sum_transition_loss(model: PrivacyAwareCQL, episode: EpisodeBatch, noise_std: float) -> Tensor:
@@ -28,7 +33,7 @@ def train_dp_cql(
     steps: int,
     episode_batch_size: int,
     seed: int,
-) -> tuple[TrajectoryDPSGD, PrivacyAuditor]:
+) -> tuple[TrajectoryDPSGD, PrivacyAuditor, list[DPStepStats], list[float]]:
     generator = seed_everything(seed)
     optimizer = TrajectoryDPSGD(
         model.parameters(),
@@ -52,6 +57,8 @@ def train_dp_cql(
         generator=generator,
     )
     iterator = iter(loader)
+    step_stats: list[DPStepStats] = []
+    epsilons: list[float] = []
     for step in range(steps):
         try:
             sampled = next(iterator)
@@ -63,7 +70,9 @@ def train_dp_cql(
             for episode in sampled
         ]
         stats = optimizer.dp_step(losses)
-        auditor.observe_step(delta=1e-5)
+        account = auditor.observe_step(delta=1e-5)
+        step_stats.append(stats)
+        epsilons.append(account.epsilon)
         model.update_target()
         if step in {0, steps - 1}:
             print(
@@ -71,7 +80,7 @@ def train_dp_cql(
                 f"raw_norm={stats.unclipped_norm_mean:.2f} "
                 f"clipped={stats.clipped_fraction:.2f} noise={stats.noise_std:.3f}"
             )
-    return optimizer, auditor
+    return optimizer, auditor, step_stats, epsilons
 
 
 def episode_td_losses(model: PrivacyAwareCQL, episodes: Sequence[EpisodeBatch]) -> Tensor:
@@ -101,6 +110,65 @@ def apply_influence_unlearning(
     unlearner.forget()
 
 
+def write_visualise_metrics(
+    path: Path,
+    *,
+    args: argparse.Namespace,
+    step_stats: Sequence[DPStepStats],
+    epsilons: Sequence[float],
+    deleted_episode: int,
+    affected_shards: Sequence[int],
+    utility_report: dict[str, Any],
+    mia_report: dict[str, Any],
+    rdp_budget: dict[str, Any],
+    optimizer_rdp_budget: dict[str, Any],
+) -> Path:
+    margin_distribution = mia_report["margin_distribution"]
+    record = {
+        "schema_version": 1,
+        "source": "main.py",
+        "config": {
+            "steps": args.steps,
+            "episodes": args.episodes,
+            "horizon": args.horizon,
+            "state_dim": args.state_dim,
+            "action_dim": args.action_dim,
+            "episode_batch_size": args.episode_batch_size,
+            "delete_episode": args.delete_episode,
+            "shards": args.shards,
+            "seed": args.seed,
+        },
+        "steps": list(range(len(step_stats))),
+        "clip_norms": [stats.clip_norm for stats in step_stats],
+        "epsilons": [float(epsilon) for epsilon in epsilons],
+        "raw_norms": [stats.unclipped_norm_mean for stats in step_stats],
+        "clipped_fractions": [stats.clipped_fraction for stats in step_stats],
+        "noise_std": [stats.noise_std for stats in step_stats],
+        "trajectory_counts": [stats.trajectory_count for stats in step_stats],
+        "before_margins": margin_distribution["before"],
+        "after_margins": margin_distribution["after"],
+        "logged_return": {
+            "mean": utility_report["logged_return"]["mean_return"],
+            "std": utility_report["logged_return"]["std_return"],
+            "episode_count": utility_report["logged_return"]["episode_count"],
+        },
+        "proxy_return": {
+            "mean": utility_report["policy_proxy_return"]["mean_return"],
+            "std": utility_report["policy_proxy_return"]["std_return"],
+            "episode_count": utility_report["policy_proxy_return"]["episode_count"],
+        },
+        "delta_j": utility_report["delta_j"],
+        "mia_report": mia_report,
+        "rdp_budget": rdp_budget,
+        "optimizer_rdp_budget": optimizer_rdp_budget,
+        "deleted_episode": deleted_episode,
+        "affected_shards": list(affected_shards),
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+    return path
+
+
 def run_demo(args: argparse.Namespace) -> None:
     generator = seed_everything(args.seed)
     dataset = TrajectoryDataset.synthetic(
@@ -113,7 +181,7 @@ def run_demo(args: argparse.Namespace) -> None:
     )
     episodes = [dataset[index] for index in range(len(dataset))]
     model = PrivacyAwareCQL(args.state_dim, args.action_dim)
-    optimizer, auditor = train_dp_cql(
+    optimizer, auditor, step_stats, epsilons = train_dp_cql(
         model=model,
         dataset=dataset,
         steps=args.steps,
@@ -148,11 +216,24 @@ def run_demo(args: argparse.Namespace) -> None:
         "policy_proxy_return": asdict(proxy_return),
         "delta_j": UtilityEvaluator.delta_j(logged_return, proxy_return),
     }
+    metrics_path = write_visualise_metrics(
+        METRICS_PATH,
+        args=args,
+        step_stats=step_stats,
+        epsilons=epsilons,
+        deleted_episode=deleted.episode_id,
+        affected_shards=sorted(affected),
+        utility_report=utility_report,
+        mia_report=report,
+        rdp_budget=asdict(budget),
+        optimizer_rdp_budget=asdict(optimizer_budget),
+    )
     print(f"rdp_budget={asdict(budget)}")
     print(f"optimizer_rdp_budget={asdict(optimizer_budget)}")
     print(f"deleted_episode={deleted.episode_id} sisa_retrain_shards={sorted(affected)}")
     print(f"utility_report={utility_report}")
     print(f"mia_report={report}")
+    print(f"metrics_json={metrics_path}")
 
 
 def build_parser() -> argparse.ArgumentParser:
