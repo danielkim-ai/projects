@@ -7,20 +7,24 @@ import torch
 from torch import Tensor
 from torch.utils.data import Dataset
 
-from utils import EpisodeBatch
+from utils import EpisodeBatch, make_synthetic_episodes
 
 
 class TrajectoryDataset(Dataset[EpisodeBatch]):
-    """Dataset whose atomic item is a full trajectory, not a transition."""
+    """Dataset whose atomic item is a full correlated trajectory."""
 
-    def __init__(self, episodes: Sequence[EpisodeBatch]) -> None:
+    def __init__(self, episodes: Sequence[EpisodeBatch], shard_count: int = 1) -> None:
         if not episodes:
             raise ValueError("TrajectoryDataset requires at least one episode")
+        if shard_count <= 0:
+            raise ValueError("shard_count must be positive")
         self._episodes = list(episodes)
+        self.shard_count = shard_count
         self._episode_index = {episode.episode_id: index for index, episode in enumerate(self._episodes)}
         if len(self._episode_index) != len(self._episodes):
             raise ValueError("episode_id values must be unique")
         self._validate_boundaries()
+        self._shard_map = self._build_shard_map(shard_count)
 
     def __len__(self) -> int:
         return len(self._episodes)
@@ -37,8 +41,36 @@ class TrajectoryDataset(Dataset[EpisodeBatch]):
 
     def without_episode(self, episode_id: int) -> "TrajectoryDataset":
         return TrajectoryDataset(
-            [episode for episode in self._episodes if episode.episode_id != episode_id]
+            [episode for episode in self._episodes if episode.episode_id != episode_id],
+            shard_count=self.shard_count,
         )
+
+    def shard_ids(self) -> list[int]:
+        return sorted(self._shard_map)
+
+    def shard_episode_ids(self, shard_id: int) -> tuple[int, ...]:
+        if shard_id not in self._shard_map:
+            raise KeyError(f"unknown shard_id {shard_id}")
+        return tuple(self._shard_map[shard_id])
+
+    def shard_dataset(self, shard_id: int) -> "TrajectoryDataset":
+        return TrajectoryDataset(
+            [self.get_episode(episode_id) for episode_id in self.shard_episode_ids(shard_id)],
+            shard_count=1,
+        )
+
+    def affected_shards(self, deleted_episode_ids: Sequence[int]) -> set[int]:
+        return {self.shard_for_episode(episode_id) for episode_id in deleted_episode_ids}
+
+    def shard_for_episode(self, episode_id: int) -> int:
+        if episode_id not in self._episode_index:
+            raise KeyError(f"unknown episode_id {episode_id}")
+        return episode_id % self.shard_count
+
+    def split_shards(self, shard_count: int | None = None) -> list["TrajectoryDataset"]:
+        if shard_count is not None and shard_count != self.shard_count:
+            return TrajectoryDataset(self._episodes, shard_count=shard_count).split_shards()
+        return [self.shard_dataset(shard_id) for shard_id in self.shard_ids()]
 
     def _validate_boundaries(self) -> None:
         for episode in self._episodes:
@@ -56,6 +88,12 @@ class TrajectoryDataset(Dataset[EpisodeBatch]):
             terminal_value = episode.dones.new_tensor(1.0)
             if episode.dones.numel() > 0 and not torch.isclose(episode.dones[-1], terminal_value):
                 raise ValueError(f"episode {episode.episode_id} must terminate at the last transition")
+
+    def _build_shard_map(self, shard_count: int) -> dict[int, list[int]]:
+        shard_map = {shard_id: [] for shard_id in range(shard_count)}
+        for episode_id in self.episode_ids:
+            shard_map[episode_id % shard_count].append(episode_id)
+        return shard_map
 
     @classmethod
     def from_transition_tensors(
@@ -82,9 +120,28 @@ class TrajectoryDataset(Dataset[EpisodeBatch]):
             )
         return cls(episodes)
 
+    @classmethod
+    def synthetic(
+        cls,
+        episode_count: int,
+        horizon: int,
+        state_dim: int,
+        action_dim: int,
+        generator: torch.Generator,
+        shard_count: int = 1,
+    ) -> "TrajectoryDataset":
+        episodes = make_synthetic_episodes(
+            episode_count=episode_count,
+            horizon=horizon,
+            state_dim=state_dim,
+            action_dim=action_dim,
+            generator=generator,
+        )
+        return cls(episodes, shard_count=shard_count)
+
 
 class TrajectoryDataLoader:
-    """Small episode-level loader with sampling without replacement per epoch."""
+    """Episode-level mini-batch loader using sampling without replacement."""
 
     def __init__(
         self,
@@ -124,15 +181,17 @@ class SISAShardIndex:
     def __init__(self, dataset: TrajectoryDataset, shard_count: int) -> None:
         if shard_count <= 0:
             raise ValueError("shard_count must be positive")
+        if dataset.shard_count != shard_count:
+            dataset = TrajectoryDataset([dataset[index] for index in range(len(dataset))], shard_count)
         self.dataset = dataset
         self.shard_count = shard_count
         self._assignments = self._build_assignments()
 
     def _build_assignments(self) -> dict[int, list[int]]:
-        assignments = {shard_id: [] for shard_id in range(self.shard_count)}
-        for episode_id in self.dataset.episode_ids:
-            assignments[episode_id % self.shard_count].append(episode_id)
-        return assignments
+        return {
+            shard_id: list(self.dataset.shard_episode_ids(shard_id))
+            for shard_id in self.dataset.shard_ids()
+        }
 
     def shard_for_episode(self, episode_id: int) -> int:
         return episode_id % self.shard_count
