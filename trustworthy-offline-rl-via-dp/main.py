@@ -34,16 +34,28 @@ def train_dp_cql(
     episode_batch_size: int,
     seed: int,
     noise_multiplier: float,
+    clip_schedule: str,
+    early_clip_norm: float,
+    late_clip_norm: float,
+    static_clip_norm: float,
 ) -> tuple[TrajectoryDPSGD, PrivacyAuditor, list[DPStepStats], list[float]]:
     generator = seed_everything(seed)
+    if clip_schedule == "static":
+        schedule = PhaseClipNormSchedule(
+            warmup_steps=steps + 1,
+            early_norm=static_clip_norm,
+            late_norm=static_clip_norm,
+        )
+    else:
+        schedule = PhaseClipNormSchedule(
+            warmup_steps=max(steps // 2, 1),
+            early_norm=early_clip_norm,
+            late_norm=late_clip_norm,
+        )
     optimizer = TrajectoryDPSGD(
         model.parameters(),
         lr=2e-3,
-        clip_schedule=PhaseClipNormSchedule(
-            warmup_steps=max(steps // 2, 1),
-            early_norm=1.3,
-            late_norm=0.8,
-        ),
+        clip_schedule=schedule,
         noise_multiplier=noise_multiplier,
         sampling_rate=min(episode_batch_size / max(len(dataset), 1), 1.0),
     )
@@ -140,6 +152,11 @@ def write_visualise_metrics(
             "seed": args.seed,
             "noise_multiplier": args.noise_multiplier,
             "write_metrics": str(args.write_metrics),
+            "hidden_dim": args.hidden_dim,
+            "clip_schedule": args.clip_schedule,
+            "early_clip_norm": args.early_clip_norm,
+            "late_clip_norm": args.late_clip_norm,
+            "static_clip_norm": args.static_clip_norm,
         },
         "steps": list(range(len(step_stats))),
         "clip_norms": [stats.clip_norm for stats in step_stats],
@@ -183,7 +200,7 @@ def run_demo(args: argparse.Namespace) -> None:
         shard_count=args.shards,
     )
     episodes = [dataset[index] for index in range(len(dataset))]
-    model = PrivacyAwareCQL(args.state_dim, args.action_dim)
+    model = PrivacyAwareCQL(args.state_dim, args.action_dim, hidden_dim=args.hidden_dim)
     optimizer, auditor, step_stats, epsilons = train_dp_cql(
         model=model,
         dataset=dataset,
@@ -191,6 +208,10 @@ def run_demo(args: argparse.Namespace) -> None:
         episode_batch_size=args.episode_batch_size,
         seed=args.seed + 1,
         noise_multiplier=args.noise_multiplier,
+        clip_schedule=args.clip_schedule,
+        early_clip_norm=args.early_clip_norm,
+        late_clip_norm=args.late_clip_norm,
+        static_clip_norm=args.static_clip_norm,
     )
     deleted = dataset.get_episode(args.delete_episode % len(dataset))
     retained_dataset = dataset.without_episode(deleted.episode_id)
@@ -209,7 +230,12 @@ def run_demo(args: argparse.Namespace) -> None:
     sharding = SISAShardIndex(dataset=dataset, shard_count=args.shards)
     affected = sharding.affected_shards([deleted.episode_id])
     logged_return = UtilityEvaluator.logged_return(episodes)
-    proxy_return = UtilityEvaluator.monte_carlo_proxy_return(model.policy, episodes)
+    proxy_return = UtilityEvaluator.monte_carlo_weight_noisy_proxy_return(
+        model.policy,
+        episodes,
+        weight_noise_std=0.04 * args.noise_multiplier,
+        generator=seed_everything(args.seed + 2),
+    )
     apply_influence_unlearning(model, retained=retained, deleted=deleted)
     after = episode_td_losses(model, [deleted, *retained[: len(shadow_nonmembers) - 1]])
     report = MIAAnalyzer.analyze(before, after, nonmembers)
@@ -247,14 +273,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--steps", type=int, default=8)
     parser.add_argument("--episodes", type=int, default=18)
     parser.add_argument("--horizon", type=int, default=10)
-    parser.add_argument("--state-dim", type=int, default=6)
-    parser.add_argument("--action-dim", type=int, default=2)
+    parser.add_argument("--state-dim", type=int, default=10)
+    parser.add_argument("--action-dim", type=int, default=4)
+    parser.add_argument("--hidden-dim", type=int, default=128)
     parser.add_argument("--episode-batch-size", type=int, default=5)
     parser.add_argument("--delete-episode", type=int, default=3)
     parser.add_argument("--shards", type=int, default=3)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--noise-multiplier", type=float, default=0.65)
     parser.add_argument("--write-metrics", type=Path, default=METRICS_PATH)
+    parser.add_argument("--clip-schedule", choices=("adaptive", "static"), default="adaptive")
+    parser.add_argument("--early-clip-norm", type=float, default=1.3)
+    parser.add_argument("--late-clip-norm", type=float, default=0.8)
+    parser.add_argument("--static-clip-norm", type=float, default=1.0)
     return parser
 
 

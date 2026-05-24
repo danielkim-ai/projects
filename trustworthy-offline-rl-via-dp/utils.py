@@ -57,21 +57,53 @@ def make_synthetic_episodes(
     action_projection = torch.randn(
         state_dim, action_dim, generator=generator
     ) / max(state_dim, 1) ** 0.5
+    nonlinear_projection = torch.randn(
+        state_dim, state_dim, generator=generator
+    ) / max(state_dim, 1) ** 0.5
+    reward_projection = torch.randn(
+        state_dim, action_dim, generator=generator
+    ) / max(state_dim, 1) ** 0.5
+    time_grid = torch.linspace(0.0, 1.0, horizon).unsqueeze(-1)
+    frequencies = torch.linspace(0.7, 2.3, state_dim).unsqueeze(0)
     for episode_id in range(episode_count):
-        states = torch.randn(horizon, state_dim, generator=generator)
-        behavior_actions = torch.tanh(states @ action_projection)
+        latent = torch.randn(horizon, state_dim, generator=generator)
+        phase = 0.13 * episode_id
+        seasonal = torch.sin(2.0 * torch.pi * time_grid * frequencies + phase)
+        interaction = torch.cos(latent @ nonlinear_projection)
+        states = 0.62 * latent + 0.28 * seasonal + 0.10 * interaction
+
+        behavioural_signal = (
+            states @ action_projection
+            + 0.35 * torch.sin(states @ reward_projection)
+            + 0.18 * torch.cos(states[:, :action_dim])
+        )
+        behavior_actions = torch.tanh(behavioural_signal)
         actions = torch.clamp(
             behavior_actions
-            + 0.12 * torch.randn(horizon, action_dim, generator=generator),
+            + 0.18 * torch.randn(horizon, action_dim, generator=generator),
             -1.0,
             1.0,
         )
-        drift = 0.18 * torch.randn(horizon, state_dim, generator=generator)
+        drift = 0.16 * torch.randn(horizon, state_dim, generator=generator)
         action_effect = actions.mean(dim=-1, keepdim=True)
-        next_states = states + drift + 0.08 * action_effect
-        target_action = torch.tanh(states[:, :action_dim])
-        rewards = 1.0 - (actions - target_action).square().sum(dim=-1)
-        rewards = rewards + 0.05 * torch.randn(horizon, generator=generator)
+        next_states = (
+            0.74 * states
+            + 0.18 * torch.sin(states @ nonlinear_projection)
+            + 0.10 * torch.cos(states)
+            + 0.12 * action_effect
+            + drift
+        )
+        target_features = states @ reward_projection + 0.35 * torch.sin(states[:, :action_dim])
+        target_action = torch.tanh(target_features)
+        curvature_penalty = 0.08 * torch.sin(states).square().sum(dim=-1)
+        transition_bonus = 0.18 * torch.cos(next_states - states).mean(dim=-1)
+        rewards = (
+            1.6
+            - 1.35 * (actions - target_action).square().sum(dim=-1)
+            - curvature_penalty
+            + transition_bonus
+        )
+        rewards = rewards + 0.10 * torch.randn(horizon, generator=generator)
         dones = torch.zeros(horizon)
         dones[-1] = 1.0
         episodes.append(

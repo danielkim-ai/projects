@@ -128,6 +128,36 @@ To run the full 16-step workflow and regenerate all evaluation figures in sequen
 python main.py --steps 16 --episodes 36 --episode-batch-size 8 --shards 6 --delete-episode 11 && python visualise.py --metrics-json results/plots/latest_visualise_metrics.json
 ```
 
+### Real-World Simulation Ablations
+
+The synthetic generator now uses sinusoidal state factors, cosine interactions, multidimensional drift, and a non-linear reward surface. This makes privacy noise and clipping choices more visible in the reported utility gap, MIA margins, and RDP curve.
+
+Experiment A stresses the privacy-utility frontier with strong and weak noise:
+
+```bash
+python main.py --steps 32 --noise-multiplier 2.5 --state-dim 12 --write-metrics results/plots/high_priv.json && python visualise.py --metrics-json results/plots/high_priv.json --output-suffix high_priv
+```
+
+```bash
+python main.py --steps 32 --noise-multiplier 0.05 --state-dim 12 --write-metrics results/plots/low_priv.json && python visualise.py --metrics-json results/plots/low_priv.json --output-suffix low_priv
+```
+
+Experiment B focuses on unlearning robustness for a specified deletion request:
+
+```bash
+python main.py --delete-episode 15 --write-metrics results/plots/unlearn_test.json && python visualise.py --metrics-json results/plots/unlearn_test.json --output-suffix unlearn_final
+```
+
+Experiment C compares adaptive and static clipping while preserving separate plot artefacts:
+
+```bash
+python main.py --steps 32 --clip-schedule adaptive --write-metrics results/plots/clip_adaptive.json && python visualise.py --metrics-json results/plots/clip_adaptive.json --output-suffix clip_adaptive
+```
+
+```bash
+python main.py --steps 32 --clip-schedule static --static-clip-norm 1.0 --write-metrics results/plots/clip_static.json && python visualise.py --metrics-json results/plots/clip_static.json --output-suffix clip_static
+```
+
 The dynamic plots summarise:
 
 ```text

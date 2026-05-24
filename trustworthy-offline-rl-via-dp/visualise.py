@@ -150,7 +150,23 @@ def gaussian_kde(values: np.ndarray, grid: np.ndarray, bandwidth: float | None =
     return density
 
 
-def plot_privacy_utility(metrics: ExperimentMetrics, output_dir: Path) -> Path:
+def plot_path(output_dir: Path, stem: str, output_suffix: str | None) -> Path:
+    if output_suffix is None:
+        return output_dir / f"{stem}.png"
+    clean_suffix = "".join(
+        character if character.isalnum() or character in {"-", "_"} else "_"
+        for character in output_suffix.strip()
+    )
+    if not clean_suffix:
+        return output_dir / f"{stem}.png"
+    return output_dir / f"{stem}_{clean_suffix}.png"
+
+
+def plot_privacy_utility(
+    metrics: ExperimentMetrics,
+    output_dir: Path,
+    output_suffix: str | None,
+) -> Path:
     steps = np.asarray(metrics.steps)
     fig, ax_clip = plt.subplots(figsize=(8.2, 4.8), dpi=180)
     ax_eps = ax_clip.twinx()
@@ -184,13 +200,17 @@ def plot_privacy_utility(metrics: ExperimentMetrics, output_dir: Path) -> Path:
     labels = [line.get_label() for line in lines]
     ax_clip.legend(lines, labels, loc="center right", frameon=False)
     fig.tight_layout()
-    path = output_dir / "plot_privacy_utility.png"
+    path = plot_path(output_dir, "plot_privacy_utility", output_suffix)
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
     return path
 
 
-def plot_unlearning_margin(metrics: ExperimentMetrics, output_dir: Path) -> Path:
+def plot_unlearning_margin(
+    metrics: ExperimentMetrics,
+    output_dir: Path,
+    output_suffix: str | None,
+) -> Path:
     before = metrics.before_margins
     after = metrics.after_margins
     lower = min(before.min(), after.min()) - 0.8
@@ -210,13 +230,17 @@ def plot_unlearning_margin(metrics: ExperimentMetrics, output_dir: Path) -> Path
     ax.grid(True, alpha=0.22)
     ax.legend(frameon=False, ncol=2)
     fig.tight_layout()
-    path = output_dir / "plot_unlearning_margin.png"
+    path = plot_path(output_dir, "plot_unlearning_margin", output_suffix)
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
     return path
 
 
-def plot_utility_tradeoff(metrics: ExperimentMetrics, output_dir: Path) -> Path:
+def plot_utility_tradeoff(
+    metrics: ExperimentMetrics,
+    output_dir: Path,
+    output_suffix: str | None,
+) -> Path:
     labels = ["Logged data", "DP policy proxy"]
     means = np.array([metrics.logged_return_mean, metrics.proxy_return_mean])
     stds = np.array([metrics.logged_return_std, metrics.proxy_return_std])
@@ -255,7 +279,7 @@ def plot_utility_tradeoff(metrics: ExperimentMetrics, output_dir: Path) -> Path:
         fontsize=9,
     )
     fig.tight_layout()
-    path = output_dir / "plot_utility_tradeoff.png"
+    path = plot_path(output_dir, "plot_utility_tradeoff", output_suffix)
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
     return path
@@ -277,6 +301,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=PLOT_DIR,
         help="Directory where PNG plots will be written.",
     )
+    parser.add_argument(
+        "--output-suffix",
+        type=str,
+        default=None,
+        help="Optional suffix appended to each PNG stem, for example plot_privacy_utility_high_priv.png.",
+    )
     return parser
 
 
@@ -285,9 +315,9 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     metrics = read_metrics(args.metrics_json)
     paths = [
-        plot_privacy_utility(metrics, args.output_dir),
-        plot_unlearning_margin(metrics, args.output_dir),
-        plot_utility_tradeoff(metrics, args.output_dir),
+        plot_privacy_utility(metrics, args.output_dir, args.output_suffix),
+        plot_unlearning_margin(metrics, args.output_dir, args.output_suffix),
+        plot_utility_tradeoff(metrics, args.output_dir, args.output_suffix),
     ]
     summary = {
         "metrics_source": str(metrics.source_path),
@@ -297,6 +327,7 @@ def main() -> None:
         "delta_j": metrics.delta_j,
         "before_margin_variance": float(np.var(metrics.before_margins)),
         "after_margin_variance": float(np.var(metrics.after_margins)),
+        "output_suffix": args.output_suffix,
     }
     print(f"visualisation_summary={summary}")
     for path in paths:

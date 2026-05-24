@@ -71,12 +71,12 @@ class PrivacyAwareCQL(OfflineRLAlgorithm):
         self,
         state_dim: int,
         action_dim: int,
-        hidden_dim: int = 64,
+        hidden_dim: int = 128,
         discount: float = 0.97,
         cql_weight: float = 0.4,
         privacy_weight: float = 0.2,
         behavior_weight: float = 0.05,
-        random_action_count: int = 6,
+        random_action_count: int = 10,
     ) -> None:
         super().__init__()
         self.action_dim = action_dim

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Protocol, Sequence
 
@@ -62,6 +63,30 @@ class UtilityEvaluator:
             mean_return=float(returns.mean().item()),
             std_return=float(std.item()),
             episode_count=len(episodes),
+        )
+
+    @staticmethod
+    def monte_carlo_weight_noisy_proxy_return(
+        policy: torch.nn.Module,
+        episodes: Sequence[EpisodeBatch],
+        weight_noise_std: float,
+        generator: torch.Generator,
+        action_penalty: float = 0.25,
+    ) -> ReturnSummary:
+        noisy_policy = deepcopy(policy)
+        with torch.no_grad():
+            for parameter in noisy_policy.parameters():
+                perturbation = torch.randn(
+                    parameter.shape,
+                    generator=generator,
+                    device=parameter.device,
+                    dtype=parameter.dtype,
+                )
+                parameter.add_(weight_noise_std * perturbation)
+        return UtilityEvaluator.monte_carlo_proxy_return(
+            noisy_policy,
+            episodes,
+            action_penalty=action_penalty,
         )
 
     @staticmethod
