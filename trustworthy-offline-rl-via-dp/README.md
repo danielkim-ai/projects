@@ -162,15 +162,32 @@ python main.py --steps 32 --clip-schedule static --static-clip-norm 1.0 --write-
 
 The CLI can now select both the data domain and offline RL algorithm. `PrivacyAwareIQL` avoids CQL-style OOD action sampling and instead uses in-sample expectile regression, which reduces gradient variance when trajectory-level DP noise is strong.
 
+Medical experiments are specified around MIMIC-III, the Medical Information Mart for Intensive Care. In the intended protected-data setting, sepsis treatment trajectories are grouped by patient or ICU stay, clinical vitals and laboratory measurements become observations, and medication or intervention records become actions under the `EpisodeBatch` contract.
+
+Financial experiments follow the FinRL portfolio optimisation interface. Asset-level price movement, volume, and indicator logs are treated as sequential trading histories, while execution strategy and alpha signals are protected as episode-level privacy units.
+
 ```bash
-python main.py --domain medical --algo iql --noise-multiplier 1.5
+# Medical Run and Visualise
+python main.py --domain medical --algo iql --noise-multiplier 1.5 --write-metrics results/plots/medical_iql.json
+python visualise.py --metrics-json results/plots/medical_iql.json --output-suffix medical_iql
 ```
 
 ```bash
-python main.py --domain financial --algo iql --noise-multiplier 1.5
+# Financial Run and Visualise
+python main.py --domain financial --algo iql --noise-multiplier 1.5 --write-metrics results/plots/financial_iql.json
+python visualise.py --metrics-json results/plots/financial_iql.json --output-suffix financial_iql
 ```
 
 When no protected source file is supplied, `RealWorldTrajectoryLoader` produces schema-compatible domain proxies. With `--data-path`, it parses patient-level ICU trajectories or asset-level trading logs into the same `EpisodeBatch` contract used by the synthetic engine.
+
+### Cross-Domain Comparative Analysis
+
+The same privacy and unlearning machinery is deliberately reused across domains. This keeps the adjacency unit explicit while allowing domain-specific observations, actions, and rewards to vary.
+
+| Domain | Adjacency Unit | Core Sensitive Data | Expected Utility $\Delta J$ |
+| --- | --- | --- | --- |
+| Medical | Patient trajectory | Clinical vitals and laboratory results | Lower variance via IQL in-sample bias |
+| Financial | Trading asset history | Execution strategy and alpha signals | Stable returns under DP weight noise |
 
 ### Empirical Observations
 
