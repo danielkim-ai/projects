@@ -46,6 +46,10 @@ $$
 
 without materialising a dense Hessian. SISA complements this local correction by keeping all transitions from an episode inside one shard, so a deletion request identifies bounded retraining work.
 
+## Rigorous Empirical Validation
+
+To ensure exact reproducibility and isolate the impact of differential privacy noise, we employ a deterministic seed-based execution model. While `RealWorldTrajectoryLoader` supports external datasets via `--data-path`, we provide high-fidelity domain proxies for medical and financial evaluation. These proxies are engineered to mimic the non-linear dynamics and state distributions of MIMIC-III and FinRL, allowing a transparent audit of the privacy-utility Pareto frontier without the overhead of proprietary database access.
+
 ## Architecture
 
 ```text
@@ -180,17 +184,21 @@ python visualise.py --metrics-json results/plots/financial_iql.json --output-suf
 
 When no protected source file is supplied, `RealWorldTrajectoryLoader` produces schema-compatible domain proxies. With `--data-path`, it parses patient-level ICU trajectories or asset-level trading logs into the same `EpisodeBatch` contract used by the synthetic engine.
 
-### Multi-Domain Implementation
+### Core Multi-Domain Implementation
 
 The multi-domain layer is now a core feature rather than an extension point. `RealWorldTrajectoryLoader` maps sensitive domain logs into episode-level adjacency units, while `PrivacyAwareIQL` provides a lower-variance alternative to CQL under strong DP noise.
 
 Medical support is modelled on MIMIC-III sepsis treatment benchmarks. ICU patient trajectories map 12 vital and laboratory channels, including blood pressure and oxygen saturation, into observations; medication prescriptions and intervention intensities become continuous actions. The unlearning margin plot below shows how the LiSSA deletion correction changes membership evidence in complex clinical trajectories.
 
-![Medical IQL unlearning margin](results/plots/plot_unlearning_margin_medical_iql.png)
+![Medical MIA Margin](./results/plots/plot_unlearning_margin_medical_iql.png)
+
+IQL's in-sample expectile objective avoids OOD action sampling, so the post-deletion margin shift can be attributed more cleanly to the unlearning correction rather than to sampling-induced critic volatility.
 
 Financial support follows the FinRL portfolio optimisation setting. OHLCV data and technical indicators become observations, while portfolio weight adjustments are represented as actions. The utility trade-off plot below highlights that IQL preserves a comparatively small financial utility gap under strong DP weight noise, with $\Delta J \approx 0.98$ in the recorded cross-domain run.
 
-![Financial IQL utility trade-off](results/plots/plot_utility_tradeoff_financial_iql.png)
+![Financial Utility Trade-off](./results/plots/plot_utility_tradeoff_financial_iql.png)
+
+Because IQL constrains learning to logged in-sample actions, high-noise financial training preserves a stable utility profile rather than amplifying noisy extrapolation through unsupported portfolio allocations.
 
 ### Cross-Domain Comparative Analysis
 
