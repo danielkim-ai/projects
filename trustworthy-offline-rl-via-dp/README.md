@@ -158,6 +158,20 @@ python main.py --steps 32 --clip-schedule adaptive --write-metrics results/plots
 python main.py --steps 32 --clip-schedule static --static-clip-norm 1.0 --write-metrics results/plots/clip_static.json && python visualise.py --metrics-json results/plots/clip_static.json --output-suffix clip_static
 ```
 
+### Domain-Agnostic IQL Runs
+
+The CLI can now select both the data domain and offline RL algorithm. `PrivacyAwareIQL` avoids CQL-style OOD action sampling and instead uses in-sample expectile regression, which reduces gradient variance when trajectory-level DP noise is strong.
+
+```bash
+python main.py --domain medical --algo iql --noise-multiplier 1.5
+```
+
+```bash
+python main.py --domain financial --algo iql --noise-multiplier 1.5
+```
+
+When no protected source file is supplied, `RealWorldTrajectoryLoader` produces schema-compatible domain proxies. With `--data-path`, it parses patient-level ICU trajectories or asset-level trading logs into the same `EpisodeBatch` contract used by the synthetic engine.
+
 ### Empirical Observations
 
 The ablation suite exposes a clear privacy-utility frontier. Stronger Gaussian trajectory noise gives a markedly smaller RDP-derived privacy budget, but it also widens the expected-return degradation measured by the noisy policy proxy.

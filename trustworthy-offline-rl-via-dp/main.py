@@ -9,9 +9,9 @@ from typing import Any, Sequence
 import torch
 from torch import Tensor
 
-from datasets import SISAShardIndex, TrajectoryDataLoader, TrajectoryDataset
+from datasets import RealWorldTrajectoryLoader, SISAShardIndex, TrajectoryDataLoader, TrajectoryDataset
 from evaluation import MIAAnalyzer, PrivacyAuditor, UtilityEvaluator
-from models import PrivacyAwareCQL
+from models import OfflineRLAlgorithm, PrivacyAwareCQL, PrivacyAwareIQL
 from optimizer import DPStepStats, PhaseClipNormSchedule, TrajectoryDPSGD
 from unlearning import GaussianUpdateNoise, LiSSAInfluenceUnlearner
 from utils import EpisodeBatch, seed_everything
@@ -20,7 +20,7 @@ from utils import EpisodeBatch, seed_everything
 METRICS_PATH = Path("results") / "plots" / "latest_visualise_metrics.json"
 
 
-def sum_transition_loss(model: PrivacyAwareCQL, episode: EpisodeBatch, noise_std: float) -> Tensor:
+def sum_transition_loss(model: OfflineRLAlgorithm, episode: EpisodeBatch, noise_std: float) -> Tensor:
     # `trajectory_loss` averages for diagnostics. Multiplying by trajectory length
     # exposes the requested sum of transition contributions before DP clipping.
     terms = model.trajectory_loss(episode, noise_std=noise_std)
@@ -28,7 +28,7 @@ def sum_transition_loss(model: PrivacyAwareCQL, episode: EpisodeBatch, noise_std
 
 
 def train_dp_cql(
-    model: PrivacyAwareCQL,
+    model: OfflineRLAlgorithm,
     dataset: TrajectoryDataset,
     steps: int,
     episode_batch_size: int,
@@ -96,13 +96,13 @@ def train_dp_cql(
     return optimizer, auditor, step_stats, epsilons
 
 
-def episode_td_losses(model: PrivacyAwareCQL, episodes: Sequence[EpisodeBatch]) -> Tensor:
+def episode_td_losses(model: OfflineRLAlgorithm, episodes: Sequence[EpisodeBatch]) -> Tensor:
     with torch.enable_grad():
         return model.loss_vector(episodes).detach()
 
 
 def apply_influence_unlearning(
-    model: PrivacyAwareCQL,
+    model: OfflineRLAlgorithm,
     retained: Sequence[EpisodeBatch],
     deleted: EpisodeBatch,
 ) -> None:
@@ -121,6 +121,43 @@ def apply_influence_unlearning(
         noise=GaussianUpdateNoise(std=2e-4),
     )
     unlearner.forget()
+
+
+def build_dataset(args: argparse.Namespace, generator: torch.Generator, episode_count: int) -> TrajectoryDataset:
+    if args.domain == "synthetic":
+        return TrajectoryDataset.synthetic(
+            episode_count=episode_count,
+            horizon=args.horizon,
+            state_dim=args.state_dim,
+            action_dim=args.action_dim,
+            generator=generator,
+            shard_count=args.shards,
+        )
+    loader = RealWorldTrajectoryLoader(
+        domain=args.domain,
+        data_path=args.data_path,
+        state_dim=args.state_dim,
+        action_dim=args.action_dim,
+        horizon=args.horizon,
+        episode_count=episode_count,
+        shard_count=args.shards,
+        generator=generator,
+    )
+    return loader.load()
+
+
+def build_model(args: argparse.Namespace) -> OfflineRLAlgorithm:
+    if args.algo == "iql":
+        return PrivacyAwareIQL(args.state_dim, args.action_dim, hidden_dim=args.hidden_dim)
+    return PrivacyAwareCQL(args.state_dim, args.action_dim, hidden_dim=args.hidden_dim)
+
+
+def metrics_path_for_run(args: argparse.Namespace) -> Path:
+    if args.write_metrics != METRICS_PATH:
+        return args.write_metrics
+    if args.domain == "synthetic" and args.algo == "cql":
+        return METRICS_PATH
+    return Path("results") / "plots" / f"{args.domain}_{args.algo}_metrics.json"
 
 
 def write_visualise_metrics(
@@ -157,6 +194,9 @@ def write_visualise_metrics(
             "early_clip_norm": args.early_clip_norm,
             "late_clip_norm": args.late_clip_norm,
             "static_clip_norm": args.static_clip_norm,
+            "domain": args.domain,
+            "algo": args.algo,
+            "data_path": None if args.data_path is None else str(args.data_path),
         },
         "steps": list(range(len(step_stats))),
         "clip_norms": [stats.clip_norm for stats in step_stats],
@@ -191,16 +231,10 @@ def write_visualise_metrics(
 
 def run_demo(args: argparse.Namespace) -> None:
     generator = seed_everything(args.seed)
-    dataset = TrajectoryDataset.synthetic(
-        episode_count=args.episodes,
-        horizon=args.horizon,
-        state_dim=args.state_dim,
-        action_dim=args.action_dim,
-        generator=generator,
-        shard_count=args.shards,
-    )
+    metrics_path = metrics_path_for_run(args)
+    dataset = build_dataset(args, generator=generator, episode_count=args.episodes)
     episodes = [dataset[index] for index in range(len(dataset))]
-    model = PrivacyAwareCQL(args.state_dim, args.action_dim, hidden_dim=args.hidden_dim)
+    model = build_model(args)
     optimizer, auditor, step_stats, epsilons = train_dp_cql(
         model=model,
         dataset=dataset,
@@ -216,12 +250,10 @@ def run_demo(args: argparse.Namespace) -> None:
     deleted = dataset.get_episode(args.delete_episode % len(dataset))
     retained_dataset = dataset.without_episode(deleted.episode_id)
     retained = [retained_dataset[index] for index in range(len(retained_dataset))]
-    shadow_dataset = TrajectoryDataset.synthetic(
-        episode_count=max(4, len(retained) // 2),
-        horizon=args.horizon,
-        state_dim=args.state_dim,
-        action_dim=args.action_dim,
+    shadow_dataset = build_dataset(
+        args,
         generator=generator,
+        episode_count=max(4, len(retained) // 2),
     )
     shadow_nonmembers = [shadow_dataset[index] for index in range(len(shadow_dataset))]
     before = episode_td_losses(model, [deleted, *retained[: len(shadow_nonmembers) - 1]])
@@ -246,8 +278,8 @@ def run_demo(args: argparse.Namespace) -> None:
         "policy_proxy_return": asdict(proxy_return),
         "delta_j": UtilityEvaluator.delta_j(logged_return, proxy_return),
     }
-    metrics_path = write_visualise_metrics(
-        args.write_metrics,
+    written_metrics_path = write_visualise_metrics(
+        metrics_path,
         args=args,
         step_stats=step_stats,
         epsilons=epsilons,
@@ -263,7 +295,7 @@ def run_demo(args: argparse.Namespace) -> None:
     print(f"deleted_episode={deleted.episode_id} sisa_retrain_shards={sorted(affected)}")
     print(f"utility_report={utility_report}")
     print(f"mia_report={report}")
-    print(f"metrics_json={metrics_path}")
+    print(f"metrics_json={written_metrics_path}")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -271,6 +303,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Trajectory-DP CQL and unlearning simulation for offline RL."
     )
     parser.add_argument("--steps", type=int, default=8)
+    parser.add_argument("--domain", choices=("synthetic", "medical", "financial"), default="synthetic")
+    parser.add_argument("--algo", choices=("cql", "iql"), default="cql")
+    parser.add_argument("--data-path", type=Path, default=None)
     parser.add_argument("--episodes", type=int, default=18)
     parser.add_argument("--horizon", type=int, default=10)
     parser.add_argument("--state-dim", type=int, default=10)

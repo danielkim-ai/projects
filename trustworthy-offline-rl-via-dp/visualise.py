@@ -245,7 +245,7 @@ def plot_utility_tradeoff(
     means = np.array([metrics.logged_return_mean, metrics.proxy_return_mean])
     stds = np.array([metrics.logged_return_std, metrics.proxy_return_std])
 
-    fig, ax = plt.subplots(figsize=(7.0, 4.8), dpi=180)
+    fig, ax = plt.subplots(figsize=(7.4, 5.2), dpi=180)
     bars = ax.bar(labels, means, yerr=stds, capsize=8, color=["#59a14f", "#b07aa1"], alpha=0.86)
     ax.axhline(0.0, color="#333333", linewidth=0.9)
     y_mid = float(means.mean())
@@ -278,7 +278,7 @@ def plot_utility_tradeoff(
         ha="center",
         fontsize=9,
     )
-    fig.tight_layout()
+    fig.subplots_adjust(bottom=0.18, top=0.88)
     path = plot_path(output_dir, "plot_utility_tradeoff", output_suffix)
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)

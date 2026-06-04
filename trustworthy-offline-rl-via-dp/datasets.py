@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import csv
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Iterator, Sequence
 
 import torch
@@ -8,6 +10,11 @@ from torch import Tensor
 from torch.utils.data import Dataset
 
 from utils import EpisodeBatch, make_synthetic_episodes
+
+
+STATE_PREFIXES = ("state_", "obs_", "observation_", "vital_", "lab_", "price_", "indicator_")
+ACTION_PREFIXES = ("action_", "dose_", "med_", "trade_", "position_")
+NEXT_STATE_PREFIXES = ("next_state_", "next_obs_", "next_observation_")
 
 
 class TrajectoryDataset(Dataset[EpisodeBatch]):
@@ -167,6 +174,191 @@ class TrajectoryDataLoader:
 
     def __len__(self) -> int:
         return (len(self.dataset) + self.batch_size - 1) // self.batch_size
+
+
+class RealWorldTrajectoryLoader:
+    """Load medical or financial logs into episode-level `EpisodeBatch` objects."""
+
+    def __init__(
+        self,
+        domain: str,
+        data_path: str | Path | None,
+        state_dim: int,
+        action_dim: int,
+        horizon: int,
+        episode_count: int,
+        shard_count: int,
+        generator: torch.Generator,
+    ) -> None:
+        if domain not in {"medical", "financial"}:
+            raise ValueError("domain must be 'medical' or 'financial'")
+        self.domain = domain
+        self.data_path = None if data_path is None else Path(data_path)
+        self.state_dim = state_dim
+        self.action_dim = action_dim
+        self.horizon = horizon
+        self.episode_count = episode_count
+        self.shard_count = shard_count
+        self.generator = generator
+
+    def load(self) -> TrajectoryDataset:
+        if self.data_path is not None and self.data_path.exists():
+            return self.from_csv(self.data_path)
+        if self.domain == "medical":
+            episodes = self.medical_proxy_episodes()
+        else:
+            episodes = self.financial_proxy_episodes()
+        return TrajectoryDataset(episodes, shard_count=self.shard_count)
+
+    def from_csv(self, path: Path) -> TrajectoryDataset:
+        with path.open(newline="", encoding="utf-8") as handle:
+            rows = list(csv.DictReader(handle))
+        if not rows:
+            raise ValueError(f"{path} contains no rows")
+        state_columns = self._columns(rows[0], STATE_PREFIXES, fallback_count=self.state_dim)
+        action_columns = self._columns(rows[0], ACTION_PREFIXES, fallback_count=self.action_dim)
+        next_state_columns = self._columns(rows[0], NEXT_STATE_PREFIXES, fallback_count=0)
+        episode_key = self._first_present(rows[0], ("episode_id", "patient_id", "stay_id", "ticker", "asset_id"))
+        time_key = self._first_present(rows[0], ("t", "time", "timestamp", "date", "step"), required=False)
+        grouped: dict[str, list[dict[str, str]]] = {}
+        for row in rows:
+            grouped.setdefault(row[episode_key], []).append(row)
+        episodes: list[EpisodeBatch] = []
+        for episode_index, (_episode_key, episode_rows) in enumerate(sorted(grouped.items())):
+            if time_key is not None:
+                episode_rows = sorted(episode_rows, key=lambda item: item[time_key])
+            states = self._tensor_from_columns(episode_rows, state_columns)
+            actions = self._tensor_from_columns(episode_rows, action_columns)
+            rewards = self._rewards_from_rows(episode_rows, actions)
+            if next_state_columns:
+                next_states = self._tensor_from_columns(episode_rows, next_state_columns)
+            else:
+                next_states = torch.cat((states[1:], states[-1:].clone()), dim=0)
+            dones = torch.zeros(states.shape[0])
+            dones[-1] = 1.0
+            episodes.append(
+                EpisodeBatch(
+                    episode_id=episode_index,
+                    states=states,
+                    actions=actions,
+                    rewards=rewards,
+                    next_states=next_states,
+                    dones=dones,
+                )
+            )
+        return TrajectoryDataset(episodes, shard_count=self.shard_count)
+
+    def medical_proxy_episodes(self) -> list[EpisodeBatch]:
+        episodes: list[EpisodeBatch] = []
+        treatment_matrix = torch.randn(
+            self.state_dim,
+            self.action_dim,
+            generator=self.generator,
+        ) / max(self.state_dim, 1) ** 0.5
+        for episode_id in range(self.episode_count):
+            severity = torch.randn(1, self.state_dim, generator=self.generator)
+            states: list[Tensor] = []
+            actions: list[Tensor] = []
+            rewards: list[Tensor] = []
+            for step in range(self.horizon):
+                circadian = torch.sin(torch.linspace(0.0, 3.14, self.state_dim) + 0.1 * step)
+                observation = severity + 0.15 * circadian + 0.08 * torch.randn(
+                    1,
+                    self.state_dim,
+                    generator=self.generator,
+                )
+                action = torch.tanh(observation @ treatment_matrix)
+                action = torch.clamp(
+                    action + 0.10 * torch.randn(1, self.action_dim, generator=self.generator),
+                    -1.0,
+                    1.0,
+                )
+                burden = observation.square().mean(dim=-1)
+                intervention_cost = 0.08 * action.square().sum(dim=-1)
+                reward = 1.2 - burden - intervention_cost
+                severity = 0.82 * severity - 0.10 * action.mean(dim=-1, keepdim=True) + 0.12 * torch.randn(
+                    1,
+                    self.state_dim,
+                    generator=self.generator,
+                )
+                states.append(observation.squeeze(0))
+                actions.append(action.squeeze(0))
+                rewards.append(reward.squeeze(0))
+            state_tensor = torch.stack(states)
+            action_tensor = torch.stack(actions)
+            reward_tensor = torch.stack(rewards)
+            next_states = torch.cat((state_tensor[1:], state_tensor[-1:].clone()), dim=0)
+            dones = torch.zeros(self.horizon)
+            dones[-1] = 1.0
+            episodes.append(EpisodeBatch(episode_id, state_tensor, action_tensor, reward_tensor, next_states, dones))
+        return episodes
+
+    def financial_proxy_episodes(self) -> list[EpisodeBatch]:
+        episodes: list[EpisodeBatch] = []
+        action_projection = torch.randn(
+            self.state_dim,
+            self.action_dim,
+            generator=self.generator,
+        ) / max(self.state_dim, 1) ** 0.5
+        for episode_id in range(self.episode_count):
+            market = torch.randn(self.horizon + 1, self.state_dim, generator=self.generator)
+            seasonal = torch.sin(torch.linspace(0.0, 6.28, self.horizon + 1)).unsqueeze(-1)
+            prices = torch.cumsum(0.04 * market + 0.03 * seasonal, dim=0)
+            states = torch.cat((prices[:-1], torch.tanh(prices[:-1])), dim=-1)[:, : self.state_dim]
+            next_states = torch.cat((prices[1:], torch.tanh(prices[1:])), dim=-1)[:, : self.state_dim]
+            actions = torch.tanh(states @ action_projection)
+            actions = torch.clamp(
+                actions + 0.08 * torch.randn(self.horizon, self.action_dim, generator=self.generator),
+                -1.0,
+                1.0,
+            )
+            returns = prices[1:, : self.action_dim] - prices[:-1, : self.action_dim]
+            turnover = torch.cat((actions[:1].abs(), (actions[1:] - actions[:-1]).abs()), dim=0)
+            rewards = (actions * returns).sum(dim=-1) - 0.02 * turnover.sum(dim=-1)
+            dones = torch.zeros(self.horizon)
+            dones[-1] = 1.0
+            episodes.append(EpisodeBatch(episode_id, states, actions, rewards, next_states, dones))
+        return episodes
+
+    @staticmethod
+    def _columns(row: dict[str, str], prefixes: Sequence[str], fallback_count: int) -> list[str]:
+        columns = [key for key in row if key.startswith(tuple(prefixes))]
+        if columns:
+            return sorted(columns)
+        fallback = [f"{prefixes[0]}{index}" for index in range(fallback_count)]
+        if fallback_count > 0 and all(column in row for column in fallback):
+            return fallback
+        if fallback_count == 0:
+            return []
+        raise ValueError(f"could not infer columns for prefixes {prefixes}")
+
+    @staticmethod
+    def _first_present(
+        row: dict[str, str],
+        candidates: Sequence[str],
+        required: bool = True,
+    ) -> str | None:
+        for candidate in candidates:
+            if candidate in row:
+                return candidate
+        if required:
+            raise ValueError(f"missing required key from candidates {candidates}")
+        return None
+
+    @staticmethod
+    def _tensor_from_columns(rows: Sequence[dict[str, str]], columns: Sequence[str]) -> Tensor:
+        return torch.tensor(
+            [[float(row[column]) for column in columns] for row in rows],
+            dtype=torch.float32,
+        )
+
+    def _rewards_from_rows(self, rows: Sequence[dict[str, str]], actions: Tensor) -> Tensor:
+        if "reward" in rows[0]:
+            return torch.tensor([float(row["reward"]) for row in rows], dtype=torch.float32)
+        if self.domain == "financial" and "return" in rows[0]:
+            returns = torch.tensor([float(row["return"]) for row in rows], dtype=torch.float32)
+            return returns * actions.mean(dim=-1)
+        return -0.05 * actions.square().sum(dim=-1)
 
 
 @dataclass(frozen=True)
