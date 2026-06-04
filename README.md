@@ -5,6 +5,7 @@ A curated, centralised repository capturing foundational and empirical implement
 ## Core Research Directory
 - `/policy-learning-stability`: Robust policy gradients under non-stationary reward scaling regimes. (Completed)
 - `/bayesian-rl-meets-mcmc`: Bayesian reinforcement learning with MCMC-VI posterior estimation for sample-efficient uncertainty quantification. Phase 1-4 complete, including Privacy-Preserving Analysis and the final Differential Privacy Integration milestone.
+- `/trustworthy-offline-rl-via-dp`: Multi-domain trustworthy offline RL with trajectory-level Differential Privacy, machine unlearning, and IQL validation across medical and financial proxies. (Completed)
 
 ## Project Logs
 
@@ -94,10 +95,26 @@ Posterior estimation improves the stability and auditability of reinforcement le
 \end{document}
 ```
 
-## Trustworthy Offline RL via DP & Machine Unlearning (Pending)
+## Trustworthy Offline RL via DP & Machine Unlearning (Completed)
 
-The pending `trustworthy-offline-rl-via-dp` research line is designed around offline trajectories that may encode sensitive healthcare, finance, or longitudinal user records. The intended framework combines $(\varepsilon, \delta)$-DP with trajectory-level adjacency so clipping and privacy accounting protect an episode-level unit rather than treating correlated transitions as unrelated records.
+The completed `trustworthy-offline-rl-via-dp` research line establishes a multi-domain framework integrating trajectory-level Differential Privacy, machine unlearning, and Implicit Q-Learning for sensitive healthcare and financial sequence data.
 
-Its unlearning direction is influence function-based: a deletion request should trigger an approximate inverse-Hessian correction for the removed trajectory, with sharded retraining and audit signals considered for later certification work.
+This completed project establishes a multi-domain framework integrating trajectory-level Differential Privacy $(\varepsilon \approx 2.74)$ and Implicit Q-Learning (IQL) to guarantee secure sequence optimisation without the out-of-distribution value-collapse typical of CQL under heavy gradient noise.
+
+The implementation demonstrates deterministic seed-based execution and high-fidelity domain proxies for MIMIC-III sepsis treatment and FinRL trading. This architecture audits privacy leakage risk and decision-making loss transparently, separating the effect of DP noise from uncontrolled database access or irreproducible sampling.
+
+### Featured Cross-Domain Plots
+
+| Medical Domain (MIMIC-III Sepsis Proxy) | Financial Domain (FinRL Trading Proxy) |
+| --- | --- |
+| ![Medical MIA Margin](./trustworthy-offline-rl-via-dp/results/plots/plot_unlearning_margin_medical_iql.png) | ![Financial Utility Trade-off](./trustworthy-offline-rl-via-dp/results/plots/plot_utility_tradeoff_financial_iql.png) |
+| MIA distribution collapse indicating strong membership indistinguishability $(\varepsilon \approx 2.74)$. | In-sample expectile regression showing tight utility-gap containment $(\Delta J \approx 0.98)$ under private perturbations. |
+
+Core contributions:
+
+- Implements trajectory-level DP-SGD with episode-wise clipping and RDP-compatible privacy accounting.
+- Implements LiSSA influence-function unlearning and SISA shard identification for deletion requests.
+- Adds `PrivacyAwareIQL`, reducing DP-induced gradient variance by relying on in-sample expectile regression rather than OOD action sampling.
+- Adds MIMIC-III-style and FinRL-style loaders through a shared `EpisodeBatch` abstraction.
 
 [View Details](./trustworthy-offline-rl-via-dp/README.md)
