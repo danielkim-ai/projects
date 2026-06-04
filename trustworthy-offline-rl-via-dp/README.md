@@ -180,6 +180,18 @@ python visualise.py --metrics-json results/plots/financial_iql.json --output-suf
 
 When no protected source file is supplied, `RealWorldTrajectoryLoader` produces schema-compatible domain proxies. With `--data-path`, it parses patient-level ICU trajectories or asset-level trading logs into the same `EpisodeBatch` contract used by the synthetic engine.
 
+### Multi-Domain Implementation
+
+The multi-domain layer is now a core feature rather than an extension point. `RealWorldTrajectoryLoader` maps sensitive domain logs into episode-level adjacency units, while `PrivacyAwareIQL` provides a lower-variance alternative to CQL under strong DP noise.
+
+Medical support is modelled on MIMIC-III sepsis treatment benchmarks. ICU patient trajectories map 12 vital and laboratory channels, including blood pressure and oxygen saturation, into observations; medication prescriptions and intervention intensities become continuous actions. The unlearning margin plot below shows how the LiSSA deletion correction changes membership evidence in complex clinical trajectories.
+
+![Medical IQL unlearning margin](results/plots/plot_unlearning_margin_medical_iql.png)
+
+Financial support follows the FinRL portfolio optimisation setting. OHLCV data and technical indicators become observations, while portfolio weight adjustments are represented as actions. The utility trade-off plot below highlights that IQL preserves a comparatively small financial utility gap under strong DP weight noise, with $\Delta J \approx 0.98$ in the recorded cross-domain run.
+
+![Financial IQL utility trade-off](results/plots/plot_utility_tradeoff_financial_iql.png)
+
 ### Cross-Domain Comparative Analysis
 
 The same privacy and unlearning machinery is deliberately reused across domains. This keeps the adjacency unit explicit while allowing domain-specific observations, actions, and rewards to vary.
@@ -248,9 +260,9 @@ logged-return vs DP-policy proxy utility trade-off
 - GDPR Article 17 motivates a deletion workflow for user-contributed trajectories. Machine unlearning reduces the need to retrain every model from scratch, while shard boundaries make retraining scope auditable.
 - HIPAA and financial compliance programmes still require data governance, access control, retention policies, provenance, and evaluation on the real deployment threat model.
 
-## Extension Points
+## Future Research
 
-- Replace the synthetic episodes with healthcare or finance log loaders that preserve episode IDs.
-- Swap the compact CQL critic for an IQL actor/value decomposition while retaining the trajectory optimiser contract.
-- Add a production-grade subsampled Gaussian RDP accountant and deletion certificates backed by empirical retraining comparisons.
-- Retrain only affected SISA shards and distil the shard ensemble into a serving policy via `EpisodeShardManager.distillation_loss`.
+- Integrate a production-grade Opacus-compatible subsampled Gaussian RDP accountant and compare it against the transparent prototype accountant currently used for auditability.
+- Formalise deletion certificates by comparing LiSSA-updated models against exact affected-shard retraining on retained data.
+- Complete SISA ensemble distillation as a repeated experiment, measuring how shard retraining, policy distillation, and post-processing privacy composition interact.
+- Add dataset-specific schema validators for protected MIMIC-III and FinRL exports so deployment pipelines can fail closed when sensitive identifiers or episode boundaries are malformed.
